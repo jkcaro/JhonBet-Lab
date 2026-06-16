@@ -1,0 +1,48 @@
+# ── Datos locales (nunca al repositorio) ──
+data/*.csv
+data/*.json
+data/*.db
+data/*.sqlite
+
+# ── Variables de entorno y API keys ──
+.env
+.env.*
+!.env.example
+secrets.toml
+*.secret
+*api_key*
+*apikey*
+
+# ── Streamlit secrets ──
+.streamlit/secrets.toml
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+*.egg
+dist/
+build/
+*.spec
+
+# ── Entorno virtual ──
+venv/
+.venv/
+env/
+ENV/
+
+# ── IDEs y editores ──
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Logs y temporales ──
+*.log
+*.tmp
+*.bak
