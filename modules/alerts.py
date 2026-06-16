@@ -1,20 +1,29 @@
 """Módulo: Alertas y Retiradas — carga datos desde data/history.csv"""
 
+import os
 from datetime import date
 from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-RUTA_HISTORIAL = Path(__file__).parent.parent / "data" / "history.csv"
-RESULTADOS     = ["Ganado", "Perdido", "Pendiente"]
+RUTA_HISTORIAL  = Path(__file__).parent.parent / "data" / "history.csv"
+RESULTADOS      = ["Ganado", "Perdido", "Pendiente"]
+_COLS_HISTORIAL = ["fecha", "evento", "apuesta", "resultado", "ganancia"]
+
+os.makedirs(RUTA_HISTORIAL.parent, exist_ok=True)
+if not RUTA_HISTORIAL.exists():
+    pd.DataFrame(columns=_COLS_HISTORIAL).to_csv(RUTA_HISTORIAL, index=False)
 
 
 @st.cache_data
 def cargar_historial() -> pd.DataFrame:
     """Carga el CSV de historial de apuestas."""
-    df = pd.read_csv(RUTA_HISTORIAL)
-    df["ganancia"] = pd.to_numeric(df["ganancia"], errors="coerce").fillna(0)
-    return df
+    try:
+        df = pd.read_csv(RUTA_HISTORIAL)
+        df["ganancia"] = pd.to_numeric(df["ganancia"], errors="coerce").fillna(0)
+        return df
+    except Exception:
+        return pd.DataFrame(columns=_COLS_HISTORIAL)
 
 
 def _ganancia_segun_resultado(resultado: str, valor: float) -> float:
@@ -41,8 +50,11 @@ def _registrar_apuesta(fecha: str, evento: str, apuesta: str,
         "resultado": resultado,
         "ganancia":  _ganancia_segun_resultado(resultado, ganancia),
     }])
-    df = pd.read_csv(RUTA_HISTORIAL)
-    df["ganancia"] = pd.to_numeric(df["ganancia"], errors="coerce").fillna(0)
+    try:
+        df = pd.read_csv(RUTA_HISTORIAL)
+        df["ganancia"] = pd.to_numeric(df["ganancia"], errors="coerce").fillna(0)
+    except Exception:
+        df = pd.DataFrame(columns=_COLS_HISTORIAL)
     df = pd.concat([nueva, df], ignore_index=True)
     df.to_csv(RUTA_HISTORIAL, index=False)
     cargar_historial.clear()
@@ -50,8 +62,11 @@ def _registrar_apuesta(fecha: str, evento: str, apuesta: str,
 
 def _actualizar_apuesta(indice: int, resultado: str, ganancia: float) -> None:
     """Actualiza resultado y ganancia de una fila existente en el historial."""
-    df = pd.read_csv(RUTA_HISTORIAL)
-    df["ganancia"] = pd.to_numeric(df["ganancia"], errors="coerce").fillna(0)
+    try:
+        df = pd.read_csv(RUTA_HISTORIAL)
+        df["ganancia"] = pd.to_numeric(df["ganancia"], errors="coerce").fillna(0)
+    except Exception:
+        return
     if indice >= len(df):
         return
     df.at[indice, "resultado"] = resultado
