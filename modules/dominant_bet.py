@@ -1,11 +1,14 @@
 """Módulo: Apuesta Dominada — detecta partidos de dominancia extrema."""
 
 import math
+import os
 from pathlib import Path
 
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+
+os.makedirs(Path(__file__).parent.parent / "data", exist_ok=True)
 
 # ── Umbrales de dominancia ────────────────────────────────────────────────────
 DIFF_ELO_MIN      = 10.0

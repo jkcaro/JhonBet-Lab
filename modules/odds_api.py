@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+os.makedirs(Path(__file__).parent.parent / "data", exist_ok=True)
+
 API_KEY  = os.getenv("ODDS_API_KEY", "")
 BASE_URL = "https://api.the-odds-api.com/v4"
 

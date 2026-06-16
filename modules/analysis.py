@@ -1,11 +1,14 @@
 """Módulo: Análisis de Partidos — carga datos desde data/matches.csv"""
 
+import os
 import time
 from datetime import date as _date
 from pathlib import Path
 import pandas as pd
 import streamlit as st
 from scipy.stats import poisson
+
+os.makedirs(Path(__file__).parent.parent / "data", exist_ok=True)
 
 # Rutas absolutas a los CSV
 RUTA_PARTIDOS = Path(__file__).parent.parent / "data" / "matches.csv"

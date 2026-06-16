@@ -12,9 +12,12 @@ Para iniciar:  streamlit run app.py
 """
 
 import json          # Para leer/escribir el archivo de configuración (config.json)
+import os
 import sys
 from datetime import date as _date_today
 from pathlib import Path
+
+os.makedirs(Path(__file__).parent / "data", exist_ok=True)
 
 # Añade la carpeta raíz del proyecto al path de Python
 # para que los imports como "from modules.analysis import ..." funcionen correctamente

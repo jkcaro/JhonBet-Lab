@@ -1,8 +1,11 @@
 """Módulo: Historial de Análisis Claude — lista, tarjetas y gráficos SCADA por análisis."""
 
 import json
+import os
 from pathlib import Path
 import streamlit as st
+
+os.makedirs(Path(__file__).parent.parent / "data", exist_ok=True)
 
 _RUTA = Path(__file__).parent.parent / "data" / "claude_analysis.json"
 

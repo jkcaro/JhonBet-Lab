@@ -3,11 +3,14 @@ Módulo: ESPN API — partidos de hoy sin necesidad de API key.
 Obtiene partidos programados de múltiples ligas y los añade a matches.csv.
 """
 
+import os
 import requests
 import streamlit as st
 from datetime import datetime, timezone
 from pathlib import Path
 import pandas as pd
+
+os.makedirs(Path(__file__).parent.parent / "data", exist_ok=True)
 
 ESPN_BASE    = "https://site.api.espn.com/apis/site/v2/sports/soccer"
 TIMEOUT      = 8

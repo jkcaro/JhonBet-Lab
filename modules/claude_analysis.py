@@ -13,6 +13,8 @@ from scipy.stats import poisson as poisson_dist
 
 load_dotenv()
 
+os.makedirs(Path(__file__).parent.parent / "data", exist_ok=True)
+
 API_KEY      = os.getenv("ANTHROPIC_API_KEY", "")
 CLAUDE_MODEL = "claude-sonnet-4-6"
 
