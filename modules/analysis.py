@@ -660,12 +660,12 @@ div[data-testid="stDialog"] [data-testid="stHeading"] {
             st.rerun()   # cierra el diálogo y vuelve a la página principal
 
 
-def _formulario_partido_manual() -> None:
-    """Botón que abre el diálogo modal de partido manual + muestra mensaje de resultado."""
-    if st.button("➕ Agregar partido manual", key="btn_abrir_form_manual",
-                 use_container_width=True):
-        _dialogo_partido_manual()
+def _mensaje_partido_manual() -> None:
+    """Muestra el mensaje de resultado (éxito/error) tras guardar un partido manual.
 
+    El botón que abre el diálogo `_dialogo_partido_manual()` vive en el
+    sidebar de app.py, bajo el ítem "Análisis de Partidos".
+    """
     # ── Mensaje de resultado (éxito desaparece a los 5 s) ────────────────────
     if msg := st.session_state.get("msg_partido_manual"):
         if msg["tipo"] == "success":
@@ -709,7 +709,7 @@ def mostrar():
             "Pulsa **Actualizar partidos reales** en el panel izquierdo "
             "o añade uno manualmente:"
         )
-        _formulario_partido_manual()
+        _mensaje_partido_manual()
         return
 
     liga_elegida = st.selectbox("Liga:", ligas_disponibles, key="sel_liga")
@@ -731,7 +731,7 @@ def mostrar():
 
     if not opciones_display:
         st.info("Esta liga no tiene partidos. Selecciona otra liga o añade uno manualmente:")
-        _formulario_partido_manual()
+        _mensaje_partido_manual()
         return
 
     display_elegido = st.selectbox("Partido:", opciones_display, key="sel_partido")
@@ -753,7 +753,7 @@ def mostrar():
 
     if not st.session_state.get("analisis_listo"):
         st.caption("Selecciona un partido y pulsa Analizar.")
-        _formulario_partido_manual()
+        _mensaje_partido_manual()
         return
 
     # ── Buscar fila del partido por nombre exacto O palabras significativas ──
@@ -941,4 +941,4 @@ def mostrar():
 """, unsafe_allow_html=True)
 
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-    _formulario_partido_manual()
+    _mensaje_partido_manual()

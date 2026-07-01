@@ -313,7 +313,7 @@ def panel_sistema_puntos(puntuacion: dict,
         f'font-family:Courier New,monospace;line-height:1;'
         f'text-shadow:0 0 14px {col_gauge}55;">{puntos}</div>'
         f'<div style="font-size:9px;color:{TEXT};font-family:Courier New,monospace;'
-        f'letter-spacing:1px;">/ 5 PTS</div>'
+        f'letter-spacing:1px;">/ 4 PTS</div>'
         f'<div style="font-size:10px;font-weight:700;color:{col_estado};'
         f'font-family:Courier New,monospace;letter-spacing:1px;margin-top:4px;">'
         f'{estado}</div>'
@@ -331,7 +331,7 @@ def panel_sistema_puntos(puntuacion: dict,
             ("xG Manual BeSoccer  +2 pts",        puntuacion.get("cond_xg_manual",  False), "pts"),
             (f"BTTS Local ≥ 3/5   +1 pt",         puntuacion.get("cond_btts_local", False), "pts"),
             (f"BTTS Visit. ≥ 3/5  +1 pt",         puntuacion.get("cond_btts_visit", False), "pts"),
-            ("Confianza Medio/Alto  +1 pt",       puntuacion.get("cond_confianza",  False), "pts"),
+            ("Confianza Medio/Alto (informativo)", puntuacion.get("cond_confianza",  False), "info"),
         ]
 
     conds_html = ""
@@ -646,3 +646,164 @@ def mostrar_dashboard(texto_claude: str, datos: dict, mercado: str,
                     f'</tr></thead><tbody>{filas_html}</tbody></table>',
                     unsafe_allow_html=True,
                 )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  PALETA Y COMPONENTES — rediseño visual estilo DeOP Connect
+#  (solo presentación; no recalculan nada, consumen valores ya calculados)
+# ═══════════════════════════════════════════════════════════════════════════
+
+DEOP_PETROLEO = "#0d3b4f"
+DEOP_DORADO   = "#f5a623"
+DEOP_VERDE    = "#16a34a"
+DEOP_ROJO     = "#dc2626"
+DEOP_GRIS     = "#e2e8f0"
+DEOP_TEXTO    = "#5a7a9a"
+
+
+def gauge_donut_gris(valor: float, titulo: str, color: str = DEOP_DORADO,
+                      maximo: float = 100.0) -> go.Figure:
+    """Donut gris estilo DeOP Connect (CPU/RAM/Disco) para un valor 0-100%."""
+    valor_clamp = max(0.0, min(float(valor), maximo))
+    fig = go.Figure(go.Pie(
+        values=[valor_clamp, maximo - valor_clamp],
+        hole=0.72,
+        marker=dict(colors=[color, DEOP_GRIS], line=dict(color="#ffffff", width=2)),
+        textinfo="none",
+        hoverinfo="skip",
+        direction="clockwise",
+        sort=False,
+    ))
+    fig.add_annotation(
+        text=f"<b>{valor_clamp:.0f}%</b>", x=0.5, y=0.56, showarrow=False,
+        font=dict(family="Inter, sans-serif", size=22, color=DEOP_PETROLEO),
+    )
+    fig.add_annotation(
+        text=titulo.upper(), x=0.5, y=0.30, showarrow=False,
+        font=dict(family="Inter, sans-serif", size=9, color=DEOP_TEXTO),
+    )
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10, r=10, t=10, b=10), height=170, showlegend=False,
+    )
+    return fig
+
+
+def semaforo_mini_html(estado: str) -> str:
+    """Semáforo compacto de 3 puntos (verde/amarillo/rojo) para filas de lista."""
+    if estado == "APOSTAR":
+        col_on, idx_on = DEOP_VERDE, 2
+    elif estado == "PRECAUCIÓN":
+        col_on, idx_on = DEOP_DORADO, 1
+    else:
+        col_on, idx_on = DEOP_ROJO, 0
+
+    colores = [DEOP_ROJO, DEOP_DORADO, DEOP_VERDE]
+    puntos = ""
+    for i, col in enumerate(colores):
+        activo = i == idx_on
+        bg     = col_on if activo else "#e2e8f0"
+        glow   = f"box-shadow:0 0 5px {col_on}88;" if activo else ""
+        puntos += (
+            f'<div style="width:8px;height:8px;border-radius:50%;'
+            f'background:{bg};{glow}"></div>'
+        )
+    return (
+        f'<div style="display:flex;flex-direction:column;gap:3px;align-items:center;'
+        f'padding:2px;">{puntos}</div>'
+    )
+
+
+def tarjeta_veredicto_html(titulo: str, valor_texto: str, estado: str) -> str:
+    """Tarjeta amarilla estilo DeOP (triángulo de alerta) con semáforo de estado."""
+    if estado == "APOSTAR":
+        col, icono = DEOP_VERDE, "🟢"
+    elif estado == "PRECAUCIÓN":
+        col, icono = DEOP_DORADO, "🟡"
+    else:
+        col, icono = DEOP_ROJO, "🔴"
+    return (
+        f'<div style="background:#fff9e6;border:1px solid #f5d061;border-left:5px solid {col};'
+        f'border-radius:8px;padding:12px 14px;margin-bottom:8px;min-height:96px;">'
+        f'<div style="font-size:11px;color:#7a6a2a;font-weight:700;text-transform:uppercase;'
+        f'letter-spacing:.6px;margin-bottom:4px;">⚠️ {titulo}</div>'
+        f'<div style="font-size:15px;font-weight:800;color:#3a2f00;margin-bottom:6px;">{valor_texto}</div>'
+        f'<div style="display:inline-block;background:{col}1a;border:1px solid {col};border-radius:5px;'
+        f'padding:2px 10px;font-size:11px;font-weight:800;color:{col};">{icono} {estado}</div>'
+        f'</div>'
+    )
+
+
+def panel_info_partido_html(datos: dict) -> str:
+    """Cuadro de información del partido: equipos, xG, ELO, forma reciente."""
+    probs   = datos.get("probabilidades", {})
+    filas = [
+        ("Partido",                  datos.get("partido", "—")),
+        ("Liga",                     datos.get("liga", "—")),
+        ("xG Local",                 probs.get("xg_local", "—")),
+        ("xG Visitante",             probs.get("xg_visitante", "—")),
+        ("ELO Local",                datos.get("elo_local", "—")),
+        ("ELO Visitante",            datos.get("elo_visit", "—")),
+        ("Forma Local (últ. 5)",     datos.get("forma_reciente_local", "—")),
+        ("Forma Visitante (últ. 5)", datos.get("forma_reciente_visitante", "—")),
+    ]
+    filas_html = "".join(
+        f'<tr><td style="padding:5px 10px;color:{DEOP_TEXTO};font-size:11px;'
+        f'border-bottom:1px solid #eef2f5;">{label}</td>'
+        f'<td style="padding:5px 10px;font-weight:700;color:{DEOP_PETROLEO};font-size:12px;'
+        f'border-bottom:1px solid #eef2f5;">{valor}</td></tr>'
+        for label, valor in filas
+    )
+    return (
+        f'<div style="background:#ffffff;border:1px solid {DEOP_GRIS};border-radius:8px;'
+        f'padding:6px 4px;margin-bottom:8px;">'
+        f'<div style="font-size:10px;color:{DEOP_PETROLEO};font-weight:800;letter-spacing:1px;'
+        f'padding:6px 10px;text-transform:uppercase;border-bottom:2px solid {DEOP_DORADO};">'
+        f'◈ Información del Partido</div>'
+        f'<table style="width:100%;border-collapse:collapse;">{filas_html}</table>'
+        f'</div>'
+    )
+
+
+def tabla_ultimos_analisis_html(registros: list, limite: int = 8) -> str:
+    """Tabla HTML de los últimos partidos analizados con su veredicto."""
+    if not registros:
+        return (
+            '<div style="color:#8aaa99;font-size:12px;padding:10px 0;">'
+            'Aún no hay análisis registrados.</div>'
+        )
+    filas_html = ""
+    for r in registros[:limite]:
+        estado = str(r.get("veredicto", "NO APOSTAR")).upper()
+        if "APOSTAR" in estado and "NO" not in estado:
+            col = DEOP_VERDE
+        elif "PRECAUCIÓN" in estado or "PRECAUCION" in estado:
+            col = DEOP_DORADO
+        else:
+            col = DEOP_ROJO
+        filas_html += (
+            f'<tr>'
+            f'<td style="padding:5px 10px;font-size:11px;color:{DEOP_PETROLEO};font-weight:600;">'
+            f'{r.get("partido", "—")}</td>'
+            f'<td style="padding:5px 10px;font-size:11px;color:{DEOP_TEXTO};">{r.get("mercado", "—")}</td>'
+            f'<td style="padding:5px 10px;font-size:11px;font-weight:700;color:{col};">'
+            f'{r.get("veredicto", "—")}</td>'
+            f'<td style="padding:5px 10px;font-size:10px;color:#8aaa99;white-space:nowrap;">'
+            f'{r.get("fecha_hora", "—")}</td>'
+            f'</tr>'
+        )
+    return (
+        f'<div style="background:#ffffff;border:1px solid {DEOP_GRIS};border-radius:8px;'
+        f'padding:6px 4px;margin-bottom:8px;">'
+        f'<div style="font-size:10px;color:{DEOP_PETROLEO};font-weight:800;letter-spacing:1px;'
+        f'padding:6px 10px;text-transform:uppercase;border-bottom:2px solid {DEOP_DORADO};">'
+        f'◈ Últimos Partidos Analizados</div>'
+        f'<table style="width:100%;border-collapse:collapse;">'
+        f'<thead><tr>'
+        f'<th style="text-align:left;font-size:9px;color:{DEOP_TEXTO};padding:4px 10px;">PARTIDO</th>'
+        f'<th style="text-align:left;font-size:9px;color:{DEOP_TEXTO};padding:4px 10px;">MERCADO</th>'
+        f'<th style="text-align:left;font-size:9px;color:{DEOP_TEXTO};padding:4px 10px;">VEREDICTO</th>'
+        f'<th style="text-align:left;font-size:9px;color:{DEOP_TEXTO};padding:4px 10px;">FECHA</th>'
+        f'</tr></thead><tbody>{filas_html}</tbody></table>'
+        f'</div>'
+    )

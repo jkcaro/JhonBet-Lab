@@ -5,6 +5,8 @@ import os
 from pathlib import Path
 import streamlit as st
 
+from modules.scada_charts import semaforo_mini_html
+
 os.makedirs(Path(__file__).parent.parent / "data", exist_ok=True)
 
 _RUTA = Path(__file__).parent.parent / "data" / "claude_analysis.json"
@@ -24,51 +26,63 @@ _CSS = """
 <style>
 .hc-resumen { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
 .hc-stat {
-    background:#12121e; border:1px solid #1e1e38; border-radius:8px;
+    background:#ffffff; border:1px solid #e2e8f0; border-radius:8px;
     padding:8px 16px; text-align:center; min-width:90px; flex:1;
 }
 .hc-stat-val { font-size:18px; font-weight:800; line-height:1.1; }
 .hc-stat-lbl { font-size:9px; color:#5a7a9a; text-transform:uppercase;
                letter-spacing:1px; margin-top:2px; }
 .hc-card {
-    background:#12121e; border:1px solid #1e1e38; border-radius:10px;
-    padding:12px 14px; margin-bottom:6px; border-left:3px solid #2a2a55;
+    background:#ffffff; border:1px solid #e2e8f0; border-radius:10px;
+    padding:12px 14px; margin-bottom:6px; border-left:3px solid #cbd5e1;
 }
-.hc-partido { font-size:13px; font-weight:700; color:#e8e8f0; }
+.hc-partido { font-size:13px; font-weight:700; color:#0d3b4f; }
 .hc-fecha   { font-size:10px; color:#5a7a9a; white-space:nowrap; }
 .hc-badges  { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; align-items:center; }
 .hc-badge   { font-size:10px; font-weight:600; border-radius:4px;
               padding:2px 8px; border:1px solid; white-space:nowrap; }
 
-/* ── Inputs nativos — fondo oscuro ── */
+/* ── Botón "Limpiar" — acción destructiva, blanco/borde rojo ── */
+[data-testid="stBaseButton-primary"], [data-testid="stBaseButton-primaryFormSubmit"] {
+    background-color: #ffffff !important;
+    color: #dc2626 !important;
+    border: 1px solid #dc2626 !important;
+}
+[data-testid="stBaseButton-primary"]:hover, [data-testid="stBaseButton-primaryFormSubmit"]:hover {
+    background-color: #dc2626 !important;
+    color: #ffffff !important;
+    border-color: #dc2626 !important;
+}
+
+/* ── Inputs nativos — fondo claro DeOP ── */
 .stTextInput > div > div,
 .stTextInput > div > div > input,
 [data-baseweb="input"],
 [data-baseweb="input"] > div,
 [data-baseweb="input"] input {
-    background-color: #1a1a2e !important;
-    color: #e8e8f0 !important;
-    border: 1px solid #333 !important;
+    background-color: #ffffff !important;
+    color: #1a2c38 !important;
+    border: 1px solid #cbd5e1 !important;
 }
 .stTextInput > div > div:focus-within,
 [data-baseweb="input"]:focus-within {
-    border-color: #7c3aed !important;
-    box-shadow: 0 0 0 1px #7c3aed33 !important;
+    border-color: #f5a623 !important;
+    box-shadow: 0 0 0 1px #f5a62333 !important;
 }
 .stTextArea > div > div,
 .stTextArea > div > div > textarea,
 [data-baseweb="textarea"],
 [data-baseweb="textarea"] > div,
 [data-baseweb="textarea"] textarea {
-    background-color: #1a1a2e !important;
-    color: #e8e8f0 !important;
-    border: 1px solid #333 !important;
+    background-color: #ffffff !important;
+    color: #1a2c38 !important;
+    border: 1px solid #cbd5e1 !important;
 }
 .stSelectbox > div > div,
 [data-baseweb="select"] > div {
-    background-color: #1a1a2e !important;
-    color: #e8e8f0 !important;
-    border: 1px solid #333 !important;
+    background-color: #ffffff !important;
+    color: #1a2c38 !important;
+    border: 1px solid #cbd5e1 !important;
 }
 .stTextInput label,
 .stTextArea label,
@@ -79,22 +93,22 @@ _CSS = """
 /* Placeholder */
 .stTextInput input::placeholder,
 .stTextArea textarea::placeholder {
-    color: #5a7a9a !important;
+    color: #94a8b8 !important;
     opacity: 1 !important;
 }
 
-/* ── Expander — barra oscura ── */
+/* ── Expander — barra clara DeOP ── */
 [data-testid="stExpander"] details summary {
-    background-color: #0d1117 !important;
-    color: #8889aa !important;
-    border: 1px solid #1e1e38 !important;
+    background-color: #ffffff !important;
+    color: #0d3b4f !important;
+    border: 1px solid #e2e8f0 !important;
     border-radius: 6px !important;
     padding: 7px 12px !important;
 }
 [data-testid="stExpander"] details summary:hover {
-    background-color: #12121e !important;
-    color: #e8e8f0 !important;
-    border-color: #2a2a55 !important;
+    background-color: #fff9e6 !important;
+    color: #0d3b4f !important;
+    border-color: #f5a623 !important;
 }
 [data-testid="stExpander"] details summary > span {
     color: inherit !important;
@@ -104,11 +118,11 @@ _CSS = """
 }
 [data-testid="stExpander"] details[open] summary {
     border-radius: 6px 6px 0 0 !important;
-    border-bottom-color: #0d1117 !important;
+    border-bottom-color: #ffffff !important;
 }
 [data-testid="stExpanderDetails"] {
-    background-color: #0a0a18 !important;
-    border: 1px solid #1e1e38 !important;
+    background-color: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
     border-top: none !important;
     border-radius: 0 0 6px 6px !important;
 }
@@ -222,18 +236,18 @@ def mostrar() -> None:
     historial = _cargar()
 
     st.markdown(
-        '<div style="font-size:9px;color:#5a7a9a;letter-spacing:2px;'
-        'font-family:Courier New,monospace;margin-bottom:10px;">'
+        '<div style="font-size:10px;color:#0d3b4f;font-weight:800;letter-spacing:2px;'
+        'margin-bottom:10px;">'
         '◈ HISTORIAL DE ANÁLISIS — CLAUDE AI</div>',
         unsafe_allow_html=True,
     )
 
     if not historial:
         st.markdown(
-            '<div style="background:#12121e;border:1px solid #1e1e38;border-radius:8px;'
+            '<div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;'
             'padding:24px;text-align:center;color:#5a7a9a;font-size:13px;">'
             'Sin análisis guardados aún.<br>'
-            '<span style="font-size:11px;opacity:.6">'
+            '<span style="font-size:11px;opacity:.7">'
             'Pulsa "Analizar con Claude AI" para generar el primer análisis.</span>'
             '</div>',
             unsafe_allow_html=True,
@@ -254,7 +268,7 @@ def mostrar() -> None:
 
     st.markdown(
         f'<div class="hc-resumen">'
-        f'<div class="hc-stat"><div class="hc-stat-val" style="color:#e8e8f0;">{total}</div>'
+        f'<div class="hc-stat"><div class="hc-stat-val" style="color:#0d3b4f;">{total}</div>'
         f'<div class="hc-stat-lbl">Total</div></div>'
         f'<div class="hc-stat"><div class="hc-stat-val" style="color:{_GREEN};">{apostados}</div>'
         f'<div class="hc-stat-lbl">Apostados</div></div>'
@@ -279,7 +293,7 @@ def mostrar() -> None:
         )
     with col_btn:
         if st.button("🗑 Limpiar", key="btn_limpiar_hc", use_container_width=True,
-                     help="Eliminar todo el historial"):
+                     type="primary", help="Eliminar todo el historial"):
             try:
                 _RUTA.write_text("[]", encoding="utf-8")
                 st.rerun()
@@ -300,20 +314,20 @@ def mostrar() -> None:
 
     if filtro and not historial_vis:
         st.markdown(
-            '<div style="background:#12121e;border:1px solid #1e1e38;border-radius:8px;'
+            '<div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;'
             'padding:14px;text-align:center;color:#5a7a9a;font-size:12px;margin-top:8px;">'
             'Sin resultados para ese filtro.</div>',
             unsafe_allow_html=True,
         )
         return
 
-    st.markdown("<hr style='border-color:#1e1e38;margin:4px 0 10px'>", unsafe_allow_html=True)
+    st.markdown("<hr style='border-color:#e2e8f0;margin:4px 0 10px'>", unsafe_allow_html=True)
 
     # ── Tarjetas ────────────────────────────────────────────────────────
     for i, entrada in enumerate(historial_vis):
         partido = entrada.get("partido",  "Partido desconocido")
         fecha   = entrada.get("fecha_hora", "—")
-        mercado = entrada.get("mercado",  "—")
+        mercado = entrada.get("mercado") or "—"
         edge    = float(entrada.get("edge", 0.0))
         puntos  = entrada.get("puntos",  0)
         verdict = entrada.get("veredicto", "NO APOSTAR")
@@ -323,34 +337,42 @@ def mostrar() -> None:
         edge_col = _GREEN if edge >= 6 else (_YELLOW if edge >= 3 else _RED)
         sign_e   = "+" if edge >= 0 else ""
 
-        st.markdown(
-            f'<div class="hc-card">'
-            f'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">'
-            f'<span class="hc-partido">⚽ {partido}</span>'
-            f'<span class="hc-fecha">{fecha}</span>'
-            f'</div>'
-            f'<div class="hc-badges">'
-            f'<span class="hc-badge" style="color:{_PURP};border-color:#3b2f8a;background:rgba(124,58,237,.1);">{mercado}</span>'
-            f'<span class="hc-badge" style="color:{edge_col};border-color:{edge_col}44;background:{edge_col}11;">Edge {sign_e}{edge}%</span>'
-            f'<span class="hc-badge" style="color:#8889aa;border-color:#2a2a55;background:#16162a;">{puntos}/5 pts</span>'
-            f'<span class="hc-badge" style="color:{col_v};border-color:{col_vb};background:{col_v}11;'
-            f'font-size:11px;font-weight:700;">{verdict}</span>'
-            f'</div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
+        estado_norm = ("APOSTAR" if "APOSTAR" in verdict.upper() and "NO" not in verdict.upper()
+                       else "PRECAUCIÓN" if "PRECAUC" in verdict.upper()
+                       else "NO APOSTAR")
+
+        col_card, col_sem = st.columns([12, 1])
+        with col_card:
+            st.markdown(
+                f'<div class="hc-card" style="border-left-color:{col_v};">'
+                f'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">'
+                f'<span class="hc-partido">⚽ {partido}</span>'
+                f'<span class="hc-fecha">{fecha}</span>'
+                f'</div>'
+                f'<div class="hc-badges">'
+                f'<span class="hc-badge" style="color:{_PURP};border-color:#a78bfa44;background:#a78bfa11;">{mercado}</span>'
+                f'<span class="hc-badge" style="color:{edge_col};border-color:{edge_col}44;background:{edge_col}11;">Edge {sign_e}{edge}%</span>'
+                f'<span class="hc-badge" style="color:#5a7a9a;border-color:#cbd5e1;background:#f1f5f9;">{puntos}/5 pts</span>'
+                f'<span class="hc-badge" style="color:{col_v};border-color:{col_vb};background:{col_v}11;'
+                f'font-size:11px;font-weight:700;">{verdict}</span>'
+                f'</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        with col_sem:
+            st.markdown(semaforo_mini_html(estado_norm), unsafe_allow_html=True)
 
         with st.expander("Ver análisis completo + gráficos SCADA", expanded=False):
             # ── Gráficos SCADA (layout propio 2 columnas) ──
             _mostrar_scada(entrada, idx=i)
 
             st.markdown(
-                '<hr style="border-color:#1e1e38;margin:10px 0 8px">',
+                '<hr style="border-color:#e2e8f0;margin:10px 0 8px">',
                 unsafe_allow_html=True,
             )
             st.markdown(
-                '<div style="font-size:9px;color:#5a7a9a;letter-spacing:1.5px;'
-                'font-family:Courier New,monospace;margin-bottom:8px;">'
+                '<div style="font-size:10px;color:#0d3b4f;font-weight:800;letter-spacing:1.5px;'
+                'margin-bottom:8px;">'
                 '◈ ANÁLISIS CLAUDE</div>',
                 unsafe_allow_html=True,
             )
@@ -362,8 +384,8 @@ def mostrar() -> None:
             txt_der   = "\n\n---\n\n".join(secciones[mitad:]) if len(secciones) > 1 else ""
 
             _estilo_caja = (
-                "background:#0a0a18;border:1px solid #1e1e38;border-radius:8px;"
-                "padding:14px 16px;height:100%;"
+                "background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;"
+                "padding:14px 16px;height:100%;color:#1a2c38;"
             )
             col_txt_izq, col_txt_der = st.columns(2, gap="medium")
             with col_txt_izq:

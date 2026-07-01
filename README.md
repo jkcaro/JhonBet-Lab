@@ -1,5 +1,12 @@
 # JhonBet Lab
 
+Para habrir por terminal
+ cd /home/jhoncaro/proyectos/JhonBet-Lab
+source venv/bin/activate
+streamlit run app.py
+
+
+
 Plataforma de análisis de apuestas deportivas con modelo Poisson/xG, comparación de cuotas en tiempo real y análisis con Claude AI.
 
 -----------------------------------

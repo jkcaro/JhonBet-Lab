@@ -1,3 +1,4 @@
+# ARCHIVO LEGACY - no se usa en la versión actual DeOP. Conservado por referencia.
 """Módulo: Sistema de temas visuales — CSS dinámico con imágenes de fondo."""
 
 import base64

@@ -19,6 +19,7 @@ API_KEY      = os.getenv("ANTHROPIC_API_KEY", "")
 CLAUDE_MODEL = "claude-sonnet-4-6"
 
 MERCADOS_CLAUDE = [
+    "Victoria 1X2",
     "Ambos Marcan — No (BTTS No)",
     "Menos 1.5 Goles",
     "Más de 1.5 Goles",
@@ -27,6 +28,36 @@ MERCADOS_CLAUDE = [
 
 # ── Instrucciones especializadas por mercado ──────────────────────────────────
 _INSTRUCCIONES_MERCADO = {
+    "Victoria 1X2": """\
+Eres un especialista en el mercado "Victoria 1X2" (resultado del partido).
+
+OBJETIVO: identificar UN único ganador claro entre Local, Empate y Visitante.
+Nunca recomiendes dos resultados a la vez ni un "doble" (ej. 1X, X2).
+
+PASO 1 — Probabilidades Poisson (ya calculadas, no recalcules):
+- "victoria1x2_modelo.p_local", "p_empate", "p_visitante" son las probabilidades exactas
+  del modelo Poisson (suma completa de la matriz de marcadores).
+
+PASO 2 — Edge por resultado:
+- Edge = (cuota_real × P_modelo − 1) × 100, calculado para cada uno de los 3 resultados.
+- "victoria1x2_modelo.edges" contiene el edge ya calculado de Local/Empate/Visitante.
+- "victoria1x2_modelo.mejor_seleccion" y "mejor_edge" indican el resultado con mayor edge.
+
+PASO 3 — Selección única:
+- SOLO puedes recomendar el resultado con el edge MÁS ALTO de los tres.
+- Si ese edge máximo es < 6%, ningún resultado tiene valor → "No apostar".
+
+PASO 4 — Contexto de forma reciente:
+- Usa "forma_reciente_local" y "forma_reciente_visitante" (últimos 5 partidos, W/D/L)
+  para matizar la confianza en la selección elegida.
+- 3+ victorias recientes del favorito refuerzan la recomendación.
+- Forma irregular o racha negativa del favorito reduce la confianza.
+
+NEVER recomiendes más de un resultado.
+NEVER recomienda si el edge máximo de los 3 resultados < 6%.
+NEVER recomienda si confianza es Baja.
+NEVER recomienda para equipos filiales.""",
+
     "Ambos Marcan — No (BTTS No)": """\
 Eres un especialista en el mercado "Ambos Marcan — No" (BTTS No).
 
@@ -348,8 +379,51 @@ def _enriquecer_para_mercado(datos: dict, mercado: str) -> dict:
             return None
         return (cuota * prob - 1) * 100.0
 
+    # ── VICTORIA 1X2 ────────────────────────────────────────────────────────────
+    if mercado == "Victoria 1X2":
+        probs_m = _calcular_poisson_local(xg_l, xg_v)
+        p_local, p_empate, p_visit = probs_m["local"], probs_m["empate"], probs_m["visitante"]
+
+        c_local  = _mejor_cuota_csv("1X2", "Local")
+        c_empate = _mejor_cuota_csv("1X2", "Empate")
+        c_visit  = _mejor_cuota_csv("1X2", "Visitante")
+
+        edges_raw = {
+            "Local":     _edge_pct(p_local,  c_local),
+            "Empate":    _edge_pct(p_empate, c_empate),
+            "Visitante": _edge_pct(p_visit,  c_visit),
+        }
+        edges_validos = {k: v for k, v in edges_raw.items() if v is not None}
+        mejor_sel  = max(edges_validos, key=edges_validos.get) if edges_validos else None
+        mejor_edge = edges_validos.get(mejor_sel, 0.0) if mejor_sel else 0.0
+
+        nuevo_edge: dict[str, str] = {
+            f"Victoria 1X2 — {k}": f"{v:+.1f}%" for k, v in edges_validos.items()
+        }
+
+        datos["victoria1x2_modelo"] = {
+            "p_local":         f"{p_local*100:.1f}%",
+            "p_empate":        f"{p_empate*100:.1f}%",
+            "p_visitante":     f"{p_visit*100:.1f}%",
+            "cuota_local":     f"{c_local:.2f}"  if c_local  > 1.0 else "N/D",
+            "cuota_empate":    f"{c_empate:.2f}" if c_empate > 1.0 else "N/D",
+            "cuota_visitante": f"{c_visit:.2f}"  if c_visit  > 1.0 else "N/D",
+            "edges":           {k: f"{v:+.1f}%" for k, v in edges_validos.items()},
+            "mejor_seleccion": mejor_sel or "—",
+            "mejor_edge":      f"{mejor_edge:+.1f}%" if mejor_sel else "—",
+            "alerta": (
+                f"Mejor edge: {mejor_sel} ({mejor_edge:+.1f}%) ✅ supera el umbral 6%"
+                if mejor_sel and mejor_edge >= 6.0 else
+                "Ningún resultado supera el umbral de edge 6% ⚠️ — no recomendar"
+            ),
+        }
+        datos["edge_por_outcome"] = nuevo_edge
+        cuotas_1x2 = {k: v for k, v in datos.get("cuotas_reales", {}).items() if k.startswith("1X2")}
+        if cuotas_1x2:
+            datos["cuotas_reales"] = cuotas_1x2
+
     # ── BTTS NO ───────────────────────────────────────────────────────────────
-    if "Ambos Marcan" in mercado and "No" in mercado:
+    elif "Ambos Marcan" in mercado and "No" in mercado:
         p_si = (1 - math.exp(-xg_l)) * (1 - math.exp(-xg_v))
         p_no = 1.0 - p_si
         cond_xg_baja = xg_v < 0.8
@@ -565,13 +639,13 @@ def _enriquecer_con_stats(datos: dict) -> dict:
     return datos
 
 
-def analizar_con_claude(datos_partido: dict, mercado: str) -> str:
-    """Envía datos del partido a Claude con instrucciones adaptadas al mercado."""
-    client = anthropic.Anthropic(api_key=API_KEY)
-
-    _fallback      = next(iter(_INSTRUCCIONES_MERCADO.values()))
-    instrucciones  = _INSTRUCCIONES_MERCADO.get(mercado, _fallback)
-
+def _construir_contexto_dinamico(datos_partido: dict) -> str:
+    """
+    Construye el bloque "CAMPOS CLAVE EN LOS DATOS" + alertas del analista
+    según los campos presentes en datos_partido. Es independiente del mercado
+    — reutilizado tanto por analizar_con_claude() (un mercado) como por
+    analizar_4_mercados_claude() (los 4 mercados en un solo prompt).
+    """
     # Construir contexto dinámico según los datos disponibles
     bloques: list[str] = []
 
@@ -628,7 +702,16 @@ def analizar_con_claude(datos_partido: dict, mercado: str) -> str:
             '  Edge ≥ 6% = APUESTA CON VALOR. Edge < 6% = SIN VALOR.\n'
             '  Si el edge es < 6% en todos los outcomes del mercado, recomienda NO apostar.'
         )
-    for clave_modelo in ("btts_no_modelo", "btts_si_modelo", "menos15_modelo", "mas15_modelo"):
+    if datos_partido.get("forma_reciente_local") or datos_partido.get("forma_reciente_visitante"):
+        fl = datos_partido.get("forma_reciente_local", "—")
+        fv = datos_partido.get("forma_reciente_visitante", "—")
+        bloques.append(
+            f'- Forma reciente (últimos 5, W=ganado / D=empate / L=perdido):\n'
+            f'  Local: {fl}  |  Visitante: {fv}\n'
+            '  Úsala para matizar la confianza: racha positiva del favorito refuerza la '
+            'recomendación, racha irregular o negativa la reduce.'
+        )
+    for clave_modelo in ("victoria1x2_modelo", "btts_no_modelo", "btts_si_modelo", "menos15_modelo", "mas15_modelo"):
         if clave_modelo in datos_partido:
             bloques.append(
                 f'- "{clave_modelo}": cálculo Poisson completo ya realizado para este mercado.\n'
@@ -668,6 +751,16 @@ Estas alertas deben reflejarse explícitamente en tu respuesta:
 - Si el xG es estimado → menciona en el punto 2 que las probabilidades son orientativas.
 - Si hay riesgo de rotación → indícalo en el nivel de confianza del punto 4.
 """
+    return contexto + alertas_txt
+
+
+def analizar_con_claude(datos_partido: dict, mercado: str) -> str:
+    """Envía datos del partido a Claude con instrucciones adaptadas al mercado."""
+    client = anthropic.Anthropic(api_key=API_KEY)
+
+    _fallback           = next(iter(_INSTRUCCIONES_MERCADO.values()))
+    instrucciones       = _INSTRUCCIONES_MERCADO.get(mercado, _fallback)
+    contexto_y_alertas  = _construir_contexto_dinamico(datos_partido)
 
     prompt = f"""Eres un analista especialista en apuestas deportivas, experto en los mercados
 "Ambos Marcan" y "Resultado 1ª Parte". Tu análisis es cuantitativo, riguroso y siempre
@@ -676,19 +769,31 @@ basado en los datos proporcionados.
 Mercado a analizar: **{mercado}**
 
 {instrucciones}
-{contexto}{alertas_txt}
-REGLAS OBLIGATORIAS:
+{contexto_y_alertas}
+REGLAS OBLIGATORIAS — esto es dinero real, sé estricto:
 - Si el edge calculado es < 6%: la recomendación DEBE ser "No apostar".
 - Si la confianza es Baja: la recomendación DEBE ser "No apostar".
 - Si hay equipos filiales en los datos: la recomendación DEBE ser "No apostar".
 - Nunca inventes cuotas; usa solo las de "cuotas_reales" si están disponibles.
 - El stake máximo es el 2% del bankroll del usuario.
+- El bloque VEREDICTO FINAL es obligatorio y debe coincidir exactamente con la
+  recomendación del punto 3 — nunca lo omitas ni lo contradigas.
 
-Estructura tu respuesta EXACTAMENTE en estos 4 puntos (sin texto fuera de ellos):
+Estructura tu respuesta EXACTAMENTE en estos 4 puntos, y SIEMPRE termina con el
+bloque de veredicto final (sin ningún texto después de él):
 1. Valoración del partido — xG de cada equipo, favorito, forma reciente si disponible
 2. Análisis "{mercado}" — cálculo paso a paso de probabilidades, edge y cuotas reales
 3. Recomendación — "APOSTAR: [opción] @ [cuota]" O "No apostar — [motivo concreto]"
 4. Confianza: Alto / Medio / Bajo — con justificación en una línea
+
+Después del punto 4, añade EXACTAMENTE este bloque (sustituye los valores entre []):
+=== VEREDICTO FINAL ===
+MERCADO: {mercado}
+SELECCIÓN: [resultado único recomendado, o "Ninguno"]
+CUOTA: [X.XX, o "—" si no apuestas]
+EDGE: [X.X%, o "—" si no apuestas]
+DECISIÓN: APOSTAR ✅ / NO APOSTAR ❌
+RAZÓN: [1 línea concreta]
 
 Datos del partido:
 {json.dumps(datos_partido, indent=2, ensure_ascii=False)}
@@ -711,37 +816,28 @@ def _normalizar_formato(texto: str) -> str:
 
 # ─── Filtros de recomendación ─────────────────────────────────────────────────
 
-def _extraer_confianza(texto: str) -> str:
-    """Extrae 'Alto', 'Medio' o 'Bajo' del texto de respuesta de Claude."""
-    m = re.search(r'confianza[:\s*_]+\**(alto|medio|bajo)\**', texto, re.IGNORECASE)
-    return m.group(1).capitalize() if m else "Bajo"
-
-
 def _extraer_edge_desde_texto(texto: str) -> float:
     """
-    Fallback: extrae el edge % del texto de análisis de Claude cuando
-    odds.csv no tiene cuotas para el mercado analizado.
-    Busca patrones como 'Edge = +14.2%', 'edge: +14.2%', '= **+49.5%**'.
+    Fallback: extrae el edge % desde la línea "EDGE:" del bloque estructurado
+    "=== VEREDICTO FINAL ===" que Claude debe incluir siempre al final de su
+    respuesta. Se usa cuando odds.csv no tiene cuotas reales para el mercado
+    analizado (p.ej. "Más/Menos 1.5 Goles", que nunca tienen cuota real en
+    odds.csv) y por tanto edge_por_outcome queda vacío.
+
+    Anclado al campo estructurado en vez de escanear todo el texto libre:
+    así se evita capturar por error un edge mencionado en otro paso del
+    cálculo que no sea la conclusión final de Claude.
     """
     if not texto:
         return 0.0
-    candidatos: list[float] = []
-    # "Edge" seguido de cualquier separador y luego un número con %
-    for m in re.finditer(
-        r'[Ee]dge[^%\n]{0,60}?([+\-]?\d{1,3}(?:\.\d+)?)\s*%', texto
-    ):
-        try:
-            candidatos.append(float(m.group(1)))
-        except ValueError:
-            pass
-    # Resultado final de cálculo: "= **+XX.X%**" o "= +XX.X%"
-    for m in re.finditer(r'=\s*\**\s*([+\-]\d{1,3}(?:\.\d+)?)\s*%\**', texto):
-        try:
-            candidatos.append(float(m.group(1)))
-        except ValueError:
-            pass
-    positivos = [v for v in candidatos if v > 0]
-    return round(max(positivos), 1) if positivos else 0.0
+    m = re.search(r'EDGE:\s*\[?([+\-]?\d{1,3}(?:[.,]\d+)?)\s*%', texto, re.IGNORECASE)
+    if not m:
+        return 0.0
+    try:
+        valor = float(m.group(1).replace(",", "."))
+    except ValueError:
+        return 0.0
+    return round(valor, 1) if valor > 0 else 0.0
 
 
 def _max_edge(datos: dict) -> float:
@@ -757,28 +853,51 @@ def _max_edge(datos: dict) -> float:
     return max(positivos) if positivos else 0.0
 
 
+def _calcular_confianza(edge: float, puntos: int) -> str:
+    """
+    Confianza calculada de forma independiente (NO autoevaluada por Claude):
+      · ALTO  — edge ≥ 15% y puntos ≥ 4
+      · MEDIO — edge ≥ 6%  y puntos ≥ 3
+      · BAJO  — cualquier otro caso
+    """
+    if edge >= 15.0 and puntos >= 4:
+        return "Alto"
+    if edge >= 6.0 and puntos >= 3:
+        return "Medio"
+    return "Bajo"
+
+
 def _calcular_puntuacion(texto_claude: str, datos: dict) -> dict:
     """
-    Calcula la puntuación del sistema de decisión (0-5 puntos).
+    Calcula la puntuación del sistema de decisión (0-4 puntos).
 
     Condición base (obligatoria):
       · Edge ≥ 6% — si no se cumple, resultado automático NO APOSTAR.
+      · El edge se toma de edge_por_outcome; si está vacío (no hay cuota real
+        en odds.csv para ese mercado, p.ej. "Más/Menos 1.5 Goles") se usa como
+        fallback el edge que Claude reporta en su bloque "VEREDICTO FINAL".
 
-    Puntos adicionales:
+    Puntos:
       · xG fuente manual (BeSoccer): +2 pts
       · BTTS local últimos 5 ≥ 3:   +1 pt
       · BTTS visitante últimos 5 ≥ 3: +1 pt
-      · Confianza MEDIO o ALTO:       +1 pt
+      · (motivación "sin motivación": −1 pt)
 
-    Decisión final:
-      · Edge < 6%              → NO APOSTAR 🔴
-      · Edge ≥ 6% y pts ≥ 4   → APOSTAR ✅
-      · Edge ≥ 6% y pts 2-3   → PRECAUCIÓN 🟡
-      · Edge ≥ 6% y pts 0-1   → NO APOSTAR 🔴
+    Confianza — calculada de forma independiente con _calcular_confianza()
+    a partir de edge y puntos (ya NO se parsea del texto de Claude).
+    xG de fuente manual (BeSoccer) eleva el piso de confianza a Medio — nunca
+    se considera Bajo cuando el dato proviene de una fuente verificada a mano.
+
+    Decisión final (dinero real):
+      · Edge < 6%             → NO APOSTAR 🔴
+      · Edge ≥ 6% y pts ≥ 4  → APOSTAR ✅ (confianza Baja solo añade advertencia visual)
+      · Edge ≥ 6% y pts == 3  → PRECAUCIÓN 🟡 (Modo Observación)
+      · Edge ≥ 6% y pts ≤ 2   → NO APOSTAR 🔴
     """
-    edge      = _max_edge(datos)
-    confianza = _extraer_confianza(texto_claude)
-    fuente    = datos.get("fuente_xg", "estimado")
+    edge = _max_edge(datos)
+    if edge == 0.0:
+        edge = _extraer_edge_desde_texto(texto_claude)
+    fuente = datos.get("fuente_xg", "estimado")
 
     btts_l5 = datos.get("btts_local_5")
     btts_v5 = datos.get("btts_visit_5")
@@ -787,17 +906,23 @@ def _calcular_puntuacion(texto_claude: str, datos: dict) -> dict:
     cond_sin_motivacion = bool(motivacion and "sin motivación" in motivacion.lower())
 
     cond_edge_base  = edge >= 6.0
-    cond_xg_manual  = fuente == "manual"
+    cond_xg_manual  = fuente == "manual" or bool(datos.get("besoccer_manual"))
     cond_btts_local = btts_l5 is not None and int(btts_l5) >= 3
     cond_btts_visit = btts_v5 is not None and int(btts_v5) >= 3
-    cond_confianza  = confianza in ("Alto", "Medio")
 
     puntos = 0
     if cond_xg_manual:  puntos += 2
     if cond_btts_local: puntos += 1
     if cond_btts_visit: puntos += 1
-    if cond_confianza:  puntos += 1
     if cond_sin_motivacion: puntos = max(0, puntos - 1)   # −1 pt sin motivación
+
+    confianza = _calcular_confianza(edge, puntos)
+
+    # Piso de confianza: xG manual (BeSoccer) nunca se considera Bajo.
+    if cond_xg_manual and confianza == "Bajo":
+        confianza = "Medio"
+
+    cond_confianza  = confianza in ("Alto", "Medio")
 
     if not cond_edge_base:
         estado   = "NO APOSTAR"
@@ -805,7 +930,7 @@ def _calcular_puntuacion(texto_claude: str, datos: dict) -> dict:
     elif puntos >= 4:
         estado   = "APOSTAR"
         decision = "verde"
-    elif puntos >= 2:
+    elif puntos == 3:
         estado   = "PRECAUCIÓN"
         decision = "amarillo"
     else:
@@ -827,6 +952,181 @@ def _calcular_puntuacion(texto_claude: str, datos: dict) -> dict:
         "estado":          estado,
         "decision":        decision,   # "verde" | "amarillo" | "rojo"
     }
+
+
+# ── Mercados del dashboard principal (rediseño DeOP) ──────────────────────────
+MERCADOS_DASHBOARD = [
+    "Victoria 1X2",
+    "Ambos Marcan — Sí (BTTS Sí)",
+    "Más de 1.5 Goles",
+    "Menos 1.5 Goles",
+]
+
+# Delimitador entre bloques de mercado en la respuesta combinada de
+# analizar_4_mercados_claude(). Debe coincidir con el que se le pide a Claude
+# en el prompt y con el que usa _separar_bloques_mercado() para partir el texto.
+_RE_MERCADO_DELIM = re.compile(r'###\s*MERCADO\s*\d+\s*###\s*\n?')
+
+
+def analizar_4_mercados_claude(datos_combinado: dict) -> str:
+    """
+    Construye UN ÚNICO prompt que le pide a Claude el análisis de los 4
+    mercados de MERCADOS_DASHBOARD en una sola respuesta — una sola llamada
+    a la API en vez de 4. Cada mercado conserva el mismo formato de
+    respuesta (1-4 + bloque "=== VEREDICTO FINAL ===") que ya usa
+    analizar_con_claude(), delimitado por una línea "### MERCADO N ###" para
+    poder separarlos después con _separar_bloques_mercado().
+    """
+    client = anthropic.Anthropic(api_key=API_KEY)
+
+    bloques_instrucciones = "\n\n".join(
+        f"── MERCADO {i}: {mercado} ──\n"
+        f"{_INSTRUCCIONES_MERCADO.get(mercado, '')}"
+        for i, mercado in enumerate(MERCADOS_DASHBOARD, start=1)
+    )
+
+    contexto_y_alertas = _construir_contexto_dinamico(datos_combinado)
+
+    lista_mercados = "\n".join(
+        f"{i}. {mercado}" for i, mercado in enumerate(MERCADOS_DASHBOARD, start=1)
+    )
+
+    bloques_formato = "\n\n".join(
+        f"""### MERCADO {i} ###
+1. Valoración del partido — xG de cada equipo, favorito, forma reciente si disponible
+2. Análisis "{mercado}" — cálculo paso a paso de probabilidades, edge y cuotas reales
+3. Recomendación — "APOSTAR: [opción] @ [cuota]" O "No apostar — [motivo concreto]"
+4. Confianza: Alto / Medio / Bajo — con justificación en una línea
+=== VEREDICTO FINAL ===
+MERCADO: {mercado}
+SELECCIÓN: [resultado único recomendado, o "Ninguno"]
+CUOTA: [X.XX, o "—" si no apuestas]
+EDGE: [X.X%, o "—" si no apuestas]
+DECISIÓN: APOSTAR ✅ / NO APOSTAR ❌
+RAZÓN: [1 línea concreta]"""
+        for i, mercado in enumerate(MERCADOS_DASHBOARD, start=1)
+    )
+
+    prompt = f"""Eres un analista especialista en apuestas deportivas, experto en múltiples
+mercados (Victoria 1X2, Ambos Marcan, Más/Menos de goles). Tu análisis es
+cuantitativo, riguroso y siempre basado en los datos proporcionados.
+
+Vas a analizar 4 mercados del MISMO partido, en este orden exacto:
+{lista_mercados}
+
+INSTRUCCIONES ESPECÍFICAS POR MERCADO:
+
+{bloques_instrucciones}
+{contexto_y_alertas}
+REGLAS OBLIGATORIAS — esto es dinero real, sé estricto (aplica a los 4 mercados):
+- Si el edge calculado es < 6%: la recomendación DEBE ser "No apostar".
+- Si la confianza es Baja: la recomendación DEBE ser "No apostar".
+- Si hay equipos filiales en los datos: la recomendación DEBE ser "No apostar" en los 4.
+- Nunca inventes cuotas; usa solo las de "cuotas_reales" si están disponibles.
+- El stake máximo es el 2% del bankroll del usuario.
+- El bloque VEREDICTO FINAL es obligatorio en CADA mercado y debe coincidir
+  exactamente con la recomendación del punto 3 de ESE mercado.
+
+FORMATO DE RESPUESTA — OBLIGATORIO. Repite esta estructura completa 4 veces,
+una por cada mercado, EN EL ORDEN EXACTO indicado arriba. Cada bloque empieza
+con su propia línea delimitadora "### MERCADO N ###" y reinicia su numeración
+1-4 interna. No añadas texto antes de "### MERCADO 1 ###" ni después del
+último bloque VEREDICTO FINAL:
+
+{bloques_formato}
+
+Datos del partido (incluye el cálculo Poisson ya hecho para los 4 mercados):
+{json.dumps(datos_combinado, indent=2, ensure_ascii=False)}
+
+Responde en español. Sé conciso y directo. No añadas advertencias genéricas."""
+
+    message = client.messages.create(
+        model=CLAUDE_MODEL,
+        max_tokens=2800,
+        messages=[{"role": "user", "content": prompt}],
+        timeout=90.0,
+    )
+    return message.content[0].text
+
+
+def _separar_bloques_mercado(texto: str) -> list[str]:
+    """
+    Separa la respuesta combinada de analizar_4_mercados_claude() en sus
+    bloques individuales por mercado usando el delimitador "### MERCADO N ###".
+    Devuelve los bloques en el orden en que aparecen — deben asignarse
+    POSICIONALMENTE a MERCADOS_DASHBOARD (no por nombre, ya que no hay
+    garantía de que Claude repita el nombre exacto del mercado).
+    """
+    partes = _RE_MERCADO_DELIM.split(texto)
+    return [p.strip() for p in partes[1:] if p.strip()]
+
+
+def analizar_4_mercados(datos: dict) -> dict:
+    """
+    Ejecuta el análisis de Claude para los 4 mercados de MERCADOS_DASHBOARD
+    sobre el mismo partido (Victoria 1X2, Ambos Marcan, Más 1.5, Menos 1.5)
+    con UNA SOLA llamada a la API (analizar_4_mercados_claude), reutilizando
+    sin modificar el pipeline de enriquecimiento por mercado existente
+    (_enriquecer_para_mercado, _calcular_puntuacion). No recalcula ni altera
+    ninguna fórmula.
+
+    Si Claude no devuelve exactamente los 4 bloques esperados, reintenta la
+    MISMA llamada combinada una vez más. Si el segundo intento también falla
+    el parseo, lanza RuntimeError — el llamador (match_dashboard.py) no debe
+    guardar nada en el historial en ese caso, lo cual ya ocurre naturalmente
+    porque la excepción interrumpe el flujo antes de llegar al guardado.
+
+    `datos` debe ser el dict base ya con partido/liga/probabilidades/forma
+    reciente (mismo formato que usa el flujo de un solo mercado).
+
+    Devuelve {mercado: {"texto": str, "datos": dict, "puntuacion": dict}}.
+    """
+    import copy
+
+    base = copy.deepcopy(datos)
+    base = _enriquecer_con_cuotas(base)
+    base = _enriquecer_con_stats(base)
+    base = _enriquecer_con_alertas(base)
+
+    # Enriquecer cada mercado por separado (fórmulas intactas, sin tocar
+    # _enriquecer_para_mercado) y fusionar los resultados en un único dict
+    # para el prompt combinado — las claves de cada mercado no chocan entre sí.
+    datos_por_mercado: dict[str, dict] = {}
+    datos_combinado = copy.deepcopy(base)
+    datos_combinado["edge_por_outcome"] = {}
+    datos_combinado["cuotas_reales"]    = {}
+    for mercado in MERCADOS_DASHBOARD:
+        datos_m = _enriquecer_para_mercado(copy.deepcopy(base), mercado)
+        datos_m["mercado"] = mercado
+        datos_por_mercado[mercado] = datos_m
+        for clave_modelo in ("victoria1x2_modelo", "btts_no_modelo", "btts_si_modelo",
+                              "menos15_modelo", "mas15_modelo"):
+            if clave_modelo in datos_m:
+                datos_combinado[clave_modelo] = datos_m[clave_modelo]
+        datos_combinado["edge_por_outcome"].update(datos_m.get("edge_por_outcome", {}))
+        datos_combinado["cuotas_reales"].update(datos_m.get("cuotas_reales", {}))
+
+    bloques: list[str] = []
+    for _intento in range(2):
+        texto_combinado = analizar_4_mercados_claude(datos_combinado)
+        bloques = _separar_bloques_mercado(texto_combinado)
+        if len(bloques) == len(MERCADOS_DASHBOARD):
+            break
+
+    if len(bloques) != len(MERCADOS_DASHBOARD):
+        raise RuntimeError(
+            f"Claude no devolvió los {len(MERCADOS_DASHBOARD)} bloques de mercado "
+            f"esperados (se obtuvieron {len(bloques)}) tras 2 intentos — "
+            "no se guardó ningún resultado en el historial."
+        )
+
+    resultados: dict = {}
+    for mercado, texto_m in zip(MERCADOS_DASHBOARD, bloques):
+        datos_m = datos_por_mercado[mercado]
+        punt_m  = _calcular_puntuacion(texto_m, datos_m)
+        resultados[mercado] = {"texto": texto_m, "datos": datos_m, "puntuacion": punt_m}
+
+    return resultados
 
 
 def _banner_decision(texto_claude: str, datos: dict,
@@ -853,15 +1153,22 @@ def _banner_decision(texto_claude: str, datos: dict,
     if estado == "APOSTAR":
         modo_obs  = st.session_state.get("modo_observacion", False)
         etiqueta  = "📝 REGISTRAR VIRTUAL" if modo_obs else "✅ APOSTAR"
+        aviso_confianza = (
+            '<div style="font-size:11px;color:#f5a623;margin-top:4px;">'
+            '⚠️ Confianza Baja — verifica manualmente antes de apostar dinero real.</div>'
+            if confianza == "Bajo" else ""
+        )
         return (
             f'<div style="background:#041a0a;border:2px solid #00e676;border-radius:8px;'
-            f'padding:10px 16px;margin:10px 0;display:flex;align-items:center;gap:12px;">'
+            f'padding:10px 16px;margin:10px 0;">'
+            f'<div style="display:flex;align-items:center;gap:12px;">'
             f'<span style="color:#00e676;font-size:17px;font-weight:800;">{etiqueta}</span>'
             f'<span style="color:#aab;font-size:12px;">'
             f'Edge: <b style="color:#00e676;">+{edge:.1f}%</b>'
             f'&nbsp;·&nbsp;Puntos: <b style="color:#00e676;">{puntos}/5</b>'
             f'&nbsp;·&nbsp;Confianza: <b>{confianza}</b>'
             f'{stake_txt}</span></div>'
+            f'{aviso_confianza}</div>'
         )
 
     if estado == "PRECAUCIÓN":
@@ -880,7 +1187,7 @@ def _banner_decision(texto_claude: str, datos: dict,
     razones: list[str] = []
     if not puntuacion["cond_edge_base"]:
         razones.append(f"edge {edge:.1f}% &lt; 6%")
-    elif puntos < 2:
+    elif puntos <= 2:
         razones.append(f"puntuación {puntos}/5 insuficiente")
     if confianza == "Bajo":
         razones.append("confianza Baja")
@@ -922,7 +1229,7 @@ def _guardar_historial_claude(datos: dict, puntuacion: dict, texto: str) -> None
         "veredicto":       puntuacion.get("estado", "NO APOSTAR"),
         "texto_analisis":  texto,
         # Datos para gráficos SCADA
-        "confianza":       _extraer_confianza(texto),
+        "confianza":       puntuacion.get("confianza", "Bajo"),
         "equipo_local":    eq_l,
         "equipo_visitante": eq_v,
         "xg_local":        xg_l,
@@ -958,7 +1265,8 @@ _COLS_VIRTUAL  = ["fecha", "partido", "mercado", "cuota", "stake_virtual",
 def _guardar_apuesta_virtual(datos: dict, puntuacion: dict, texto_claude: str) -> None:
     """Guarda la apuesta virtual en data/virtual_bets.csv."""
     from datetime import date as _date
-    m = re.search(r'@\s*([\d]+[.,][\d]+)', texto_claude)
+    m = (re.search(r'CUOTA:\s*([\d]+[.,][\d]+)', texto_claude) or
+         re.search(r'@\s*([\d]+[.,][\d]+)', texto_claude))
     try:
         cuota_rec = float(m.group(1).replace(",", ".")) if m else 2.0
     except (ValueError, IndexError):
@@ -1281,12 +1589,29 @@ def mostrar():
                         unsafe_allow_html=True,
                     )
 
+                col_fl, col_fv = st.columns(2)
+                with col_fl:
+                    forma_local = st.text_input(
+                        "Forma reciente local (últimos 5)*",
+                        placeholder="Ej: W,W,D,L,W", key="claude_forma_local",
+                    )
+                with col_fv:
+                    forma_visit = st.text_input(
+                        "Forma reciente visitante (últimos 5)*",
+                        placeholder="Ej: L,D,W,W,L", key="claude_forma_visit",
+                    )
+                _forma_completa = bool(forma_local.strip()) and bool(forma_visit.strip())
+                if not _forma_completa:
+                    st.caption("⚠️ Completa la forma reciente de ambos equipos para habilitar el análisis.")
+
                 if st.button("🤖 Analizar con Claude AI", key="btn_claude",
-                             use_container_width=True):
+                             use_container_width=True, disabled=not _forma_completa):
                     _analisis_ok = False
                     _status = st.empty()
                     with st.spinner(f"Analizando «{mercado}»…"):
                         try:
+                            datos["forma_reciente_local"]      = forma_local.strip()
+                            datos["forma_reciente_visitante"]  = forma_visit.strip()
                             _status.caption("⏳ Cargando cuotas…")
                             datos_c  = _enriquecer_con_cuotas(datos)
                             _status.caption("⏳ Obteniendo estadísticas (máx. 8s)…")
@@ -1297,14 +1622,11 @@ def mostrar():
                             _status.caption("⏳ Llamando a Claude AI (máx. 45s)…")
                             analisis = analizar_con_claude(datos_c, mercado)
                             _status.caption("⏳ Calculando puntuación…")
+                            # _calcular_puntuacion ya aplica el fallback de edge (lee
+                            # "EDGE:" del bloque VEREDICTO FINAL si no hay cuota real
+                            # en odds.csv) y devuelve estado/decision ya consistentes.
                             _punt    = _calcular_puntuacion(analisis, datos_c)
-                            # Guardar en session_state ANTES de salir del spinner
-                            # Si el edge calculado es 0 (sin cuotas en CSV) extraer del texto
                             _edge_val = float(_punt.get("edge") or 0.0)
-                            if _edge_val == 0.0:
-                                _edge_val = _extraer_edge_desde_texto(analisis)
-                                _punt["edge"] = _edge_val
-                                _punt["cond_edge_base"] = _edge_val >= 6.0
                             st.session_state["claude_analisis"]       = analisis
                             st.session_state["claude_datos_analisis"] = datos_c
                             st.session_state["claude_mercado_activo"] = mercado
