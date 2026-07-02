@@ -794,7 +794,12 @@ _stc.html("""
   if (p.innerWidth >= 768) return;
 
   function _init(){
-    if (p.document.getElementById('jbl-hbg')) return;
+    // Siempre eliminar y recrear #jbl-hbg: en cada re-run de Streamlit React
+    // desmonta y remonta los elementos del DOM, así que cualquier referencia
+    // a nb capturada en un closure anterior queda obsoleta (nodo detached).
+    var old = p.document.getElementById('jbl-hbg');
+    if (old) old.parentNode.removeChild(old);
+
     var nb = p.document.querySelector('[data-testid="stExpandSidebarButton"]');
     if (!nb) { setTimeout(_init, 400); return; }
 
@@ -807,26 +812,39 @@ _stc.html("""
       'border-radius:8px;font-size:20px;cursor:pointer;' +
       'display:flex;align-items:center;justify-content:center;' +
       'box-shadow:0 2px 10px rgba(0,0,0,.45);';
-    btn.onclick = function(){ nb.click(); };
+
+    // Late binding: buscar nb fresco en cada clic (no capturar referencia)
+    btn.onclick = function(){
+      var n = p.document.querySelector('[data-testid="stExpandSidebarButton"]');
+      if (n) n.click();
+    };
     p.document.body.appendChild(btn);
 
+    // MutationObserver: desconectar el anterior y crear uno nuevo con sb fresco
+    if (p._jbl_mo) { p._jbl_mo.disconnect(); }
     var sb = p.document.querySelector('[data-testid="stSidebar"]');
     if (sb) {
-      new MutationObserver(function(){
-        btn.style.display = (sb.getAttribute('aria-expanded') === 'true') ? 'none' : 'flex';
-      }).observe(sb, {attributes: true});
+      p._jbl_mo = new MutationObserver(function(){
+        var b = p.document.getElementById('jbl-hbg');
+        if (b) b.style.display = (sb.getAttribute('aria-expanded') === 'true') ? 'none' : 'flex';
+      });
+      p._jbl_mo.observe(sb, {attributes: true});
     }
 
-    p.document.addEventListener('click', function(ev){
-      if (p.innerWidth >= 768) return;
-      var s = p.document.querySelector('[data-testid="stSidebar"]');
-      if (!s || s.getAttribute('aria-expanded') === 'false') return;
-      if (s.contains(ev.target)) return;
-      var h = p.document.getElementById('jbl-hbg');
-      if (h && h.contains(ev.target)) return;
-      var cb = p.document.querySelector('[data-testid="stSidebarCollapseButton"]');
-      if (cb) cb.click();
-    }, true);
+    // Listener "click fuera = cerrar sidebar": solo añadir UNA vez (flag en parent.window)
+    if (!p._jbl_cl) {
+      p._jbl_cl = function(ev){
+        if (p.innerWidth >= 768) return;
+        var s = p.document.querySelector('[data-testid="stSidebar"]');
+        if (!s || s.getAttribute('aria-expanded') === 'false') return;
+        if (s.contains(ev.target)) return;
+        var h = p.document.getElementById('jbl-hbg');
+        if (h && h.contains(ev.target)) return;
+        var cb = p.document.querySelector('[data-testid="stSidebarCollapseButton"]');
+        if (cb) cb.click();
+      };
+      p.document.addEventListener('click', p._jbl_cl, true);
+    }
   }
 
   setTimeout(_init, 800);
