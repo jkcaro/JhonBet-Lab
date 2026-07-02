@@ -286,16 +286,15 @@ def _barra_stats_top() -> None:
         ("Perdidas",         f"{perdidas} ({lose_rate}%)",     "#dc2626",  _sparkline_svg([perdidas]*4 or [0,0], "#dc2626")),
     ]
 
-    cols = st.columns(6)
-    for col, (label, valor, color, spark) in zip(cols, metricas):
-        col.markdown(
-            f'<div class="stat-card-top">'
-            f'<div class="stat-card-label">{label}</div>'
-            f'<div class="stat-card-value" style="color:{color};">{valor}</div>'
-            f'<div class="stat-card-chart">{spark}</div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
+    cards_html = "".join(
+        f'<div class="stat-card-top">'
+        f'<div class="stat-card-label">{label}</div>'
+        f'<div class="stat-card-value" style="color:{color};">{valor}</div>'
+        f'<div class="stat-card-chart">{spark}</div>'
+        f'</div>'
+        for label, valor, color, spark in metricas
+    )
+    st.markdown(f'<div class="stats-row">{cards_html}</div>', unsafe_allow_html=True)
 
 
 # ─── Configuración global de la página ────────────────────────────────────────
@@ -475,6 +474,14 @@ html, body,
 }
 .stat-card-chart { opacity: 0.85; line-height: 0; display: block; }
 
+/* ── Stats row: CSS grid — fiable en todos los browsers ── */
+.stats-row {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
 /* ── Probabilidades ── */
 .fila-prob    { display: flex; align-items: center; gap: 6px; margin: 4px 0; font-size: 12px; }
 .insignia     { border-radius: 4px; padding: 1px 7px; font-weight: 700; font-size: 11px; background: var(--bg-elemento); color: var(--texto); }
@@ -531,9 +538,8 @@ html, body,
 .stat-valor   { font-size: 14px; font-weight: 700; color: #ffffff; }
 
 /* ── Ocultar controles nativos (desktop) ── */
-/* En Streamlit 1.58: stSidebarCollapseButton = cerrar, stExpandSidebarButton = abrir */
+/* Streamlit 1.58: stExpandSidebarButton ES el <button> de abrir; stSidebarCollapseButton = cerrar */
 [data-testid="stSidebarCollapseButton"],
-[data-testid="stSidebarCollapseButton"] button,
 [data-testid="stExpandSidebarButton"]   { display: none !important; }
 #MainMenu { visibility: hidden; }
 footer    { visibility: hidden; }
@@ -544,40 +550,22 @@ footer    { visibility: hidden; }
 
 @media (max-width: 767px) {
 
-  /* ── Hamburguesa ☰ — botón ABRIR sidebar (stExpandSidebarButton) ── */
-  [data-testid="stExpandSidebarButton"] {
-    display: flex !important;
-    position: fixed !important;
-    top: 10px !important;
-    left: 10px !important;
-    z-index: 99999 !important;
-    align-items: center !important;
-    justify-content: center !important;
-  }
-  [data-testid="stExpandSidebarButton"] button {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    width: 40px !important;
-    height: 40px !important;
-    background: #0d3b4f !important;
-    color: #f4f6f8 !important;
-    border: none !important;
-    border-radius: 8px !important;
-    box-shadow: 0 2px 10px rgba(0,0,0,.45) !important;
-    padding: 0 !important;
-    cursor: pointer !important;
-  }
-  [data-testid="stExpandSidebarButton"] button svg {
-    fill: #f4f6f8 !important;
-    width: 18px !important;
-    height: 18px !important;
+  /* ── Stats row: 2 columnas (CSS grid, sin :has()) ── */
+  .stats-row { grid-template-columns: repeat(2, 1fr) !important; gap: 6px !important; }
+
+  /* ── stHeader: position:absolute z-index:999990, en temas oscuros = barra negra.
+        Lo hacemos transparente y sin interceptar clics. ── */
+  [data-testid="stHeader"] {
+    background: transparent !important;
+    box-shadow: none !important;
+    pointer-events: none !important;
   }
 
+  /* ── Hamburguesa: creada en document.body vía component JS (escapa stApp overflow:hidden) ── */
+
   /* ── Botón CERRAR sidebar (stSidebarCollapseButton, dentro del sidebar) ── */
-  [data-testid="stSidebarCollapseButton"] {
-    display: flex !important;
-  }
+  [data-testid="stSidebarCollapseButton"] { display: flex !important; }
+  button[data-testid="stSidebarCollapseButton"],
   [data-testid="stSidebarCollapseButton"] button {
     display: flex !important;
     align-items: center !important;
@@ -591,18 +579,10 @@ footer    { visibility: hidden; }
     padding: 0 !important;
     cursor: pointer !important;
   }
-  [data-testid="stSidebarCollapseButton"] button svg {
-    fill: #f4f6f8 !important;
-    width: 18px !important;
-    height: 18px !important;
-  }
-
-  /* ── Stat cards: 6 → 2 por fila ── */
-  /* stColumn es el testid correcto en Streamlit 1.58 (no "column") */
-  [data-testid="stColumn"]:has(.stat-card-top) {
-    min-width: calc(50% - 6px) !important;
-    max-width: calc(50% - 6px) !important;
-    flex: 0 0 calc(50% - 6px) !important;
+  [data-testid="stSidebarCollapseButton"] span,
+  [data-testid="stSidebarCollapseButton"] [data-testid="stIconMaterial"] {
+    color: #f4f6f8 !important;
+    font-size: 22px !important;
   }
 
   /* ── Gauges Plotly: 3 → 1 por fila ── */
@@ -792,26 +772,67 @@ def _css_tema_activo() -> str:
 # Inyectar CSS del tema ANTES de cualquier otro contenido (máxima prioridad)
 st.markdown(_css_tema_activo(), unsafe_allow_html=True)
 
-# JS mobile: cerrar sidebar al pulsar fuera (solo mobile, una vez por sesión)
-# Testids reales en Streamlit 1.58: stExpandSidebarButton (abrir), stSidebarCollapseButton (cerrar)
+# Override stHeader DESPUÉS del tema: el tema pone background-color opaco
+# con !important; esta inyección viene más tarde en el DOM → gana la cascada.
 st.markdown(
-    '<img src="x" style="display:none;position:absolute;width:0;height:0;" onerror="'
-    "(function(){"
-    "if(window._jbl_mo)return;window._jbl_mo=1;"
-    "document.addEventListener('click',function(ev){"
-    "if(window.innerWidth>=768)return;"
-    "var sb=document.querySelector('[data-testid=&quot;stSidebar&quot;]');"
-    "if(!sb||sb.getAttribute('aria-expanded')==='false')return;"
-    "if(sb.contains(ev.target))return;"
-    "var eb=document.querySelector('[data-testid=&quot;stExpandSidebarButton&quot;]');"
-    "if(eb&&eb.contains(ev.target))return;"
-    "var cb=document.querySelector('[data-testid=&quot;stSidebarCollapseButton&quot;] button');"
-    "if(cb)cb.click();"
-    "},true);"
-    "})();"
-    '">',
+    "<style>@media (max-width:767px){"
+    "[data-testid='stHeader']{background:transparent!important;"
+    "box-shadow:none!important;}"
+    "}</style>",
     unsafe_allow_html=True,
 )
+
+# Hamburguesa mobile via component HTML (srcdoc = mismo origen → parent.document accesible).
+# stApp tiene position:absolute + overflow:hidden que atrapa position:fixed de sus hijos,
+# por eso el botón se crea en parent.document.body (fuera del clip).
+import streamlit.components.v1 as _stc
+_stc.html("""
+<script>
+(function(){
+  var p = window.parent;
+  if (!p || !p.document) return;
+  if (p.innerWidth >= 768) return;
+
+  function _init(){
+    if (p.document.getElementById('jbl-hbg')) return;
+    var nb = p.document.querySelector('[data-testid="stExpandSidebarButton"]');
+    if (!nb) { setTimeout(_init, 400); return; }
+
+    var btn = p.document.createElement('button');
+    btn.id = 'jbl-hbg';
+    btn.textContent = '☰';
+    btn.style.cssText =
+      'position:fixed;top:10px;left:10px;z-index:9999999;' +
+      'width:44px;height:44px;background:#0d3b4f;color:#f4f6f8;border:none;' +
+      'border-radius:8px;font-size:20px;cursor:pointer;' +
+      'display:flex;align-items:center;justify-content:center;' +
+      'box-shadow:0 2px 10px rgba(0,0,0,.45);';
+    btn.onclick = function(){ nb.click(); };
+    p.document.body.appendChild(btn);
+
+    var sb = p.document.querySelector('[data-testid="stSidebar"]');
+    if (sb) {
+      new MutationObserver(function(){
+        btn.style.display = (sb.getAttribute('aria-expanded') === 'true') ? 'none' : 'flex';
+      }).observe(sb, {attributes: true});
+    }
+
+    p.document.addEventListener('click', function(ev){
+      if (p.innerWidth >= 768) return;
+      var s = p.document.querySelector('[data-testid="stSidebar"]');
+      if (!s || s.getAttribute('aria-expanded') === 'false') return;
+      if (s.contains(ev.target)) return;
+      var h = p.document.getElementById('jbl-hbg');
+      if (h && h.contains(ev.target)) return;
+      var cb = p.document.querySelector('[data-testid="stSidebarCollapseButton"]');
+      if (cb) cb.click();
+    }, true);
+  }
+
+  setTimeout(_init, 800);
+})();
+</script>
+""", height=0, scrolling=False)
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -925,7 +946,7 @@ with st.sidebar:
     _clase_activa = _nav_key(_pagina_nav)
     st.markdown(
         f"<style>"
-        f".st-key-{_clase_activa} button {{"
+        f"[data-testid='stSidebar'] .st-key-{_clase_activa} button {{"
         f"  background:rgba(245,166,35,.15) !important;"
         f"  color:#f5a623 !important;"
         f"  border-left-color:#f5a623 !important;"

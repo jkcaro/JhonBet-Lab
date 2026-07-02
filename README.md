@@ -6,6 +6,13 @@ source venv/bin/activate
 streamlit run app.py
 
 
+desde powershell
+wsl
+cd /home/jhoncaro/proyectos/JhonBet-Lab
+claude
+
+
+
 
 Plataforma de análisis de apuestas deportivas con modelo Poisson/xG, comparación de cuotas en tiempo real y análisis con Claude AI.
 

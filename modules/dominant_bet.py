@@ -1,5 +1,6 @@
 """Módulo: Apuesta Dominada — detecta partidos de dominancia extrema."""
 
+import base64
 import math
 import os
 from pathlib import Path
@@ -20,6 +21,19 @@ REGLAS_NECESARIAS = 3
 _CUOTA_OVER15_DEFAULT = 1.65
 _RUTA_ODDS    = Path(__file__).parent.parent / "data" / "odds.csv"
 _RUTA_HIST    = Path(__file__).parent.parent / "data" / "dominant_history.json"
+_RUTA_ASSETS  = Path(__file__).parent.parent / "assets"
+
+_IMG_ESTADO = {
+    "APOSTAR":    ("CR7.0.webp",                           "image/webp"),
+    "PRECAUCIÓN": ("CR7.jpg",                              "image/jpeg"),
+    "NO APOSTAR": ("jugador-futbol-futurista-luces.avif",  "image/avif"),
+}
+
+
+@st.cache_data
+def _img_b64(ruta: str) -> str:
+    with open(ruta, "rb") as f:
+        return base64.b64encode(f.read()).decode()
 
 _CSS = """
 <style>
@@ -504,6 +518,15 @@ def mostrar() -> None:
             f'{filas_m}'
             f'{concl_html}'
             f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        # ── Imagen según estado del semáforo ─────────────────────────────────
+        _img_file, _mime = _IMG_ESTADO.get(_estado_dom, ("CR7.jpg", "image/jpeg"))
+        _b64 = _img_b64(str(_RUTA_ASSETS / _img_file))
+        st.markdown(
+            f'<img src="data:{_mime};base64,{_b64}" '
+            f'style="width:100%;border-radius:8px;display:block;">',
             unsafe_allow_html=True,
         )
 

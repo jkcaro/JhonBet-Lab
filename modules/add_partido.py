@@ -14,9 +14,9 @@ from modules.analysis import _guardar_partido_manual, _cuota_val
 def _sec(titulo: str, opcional: bool = False) -> None:
     sfx = ' <span style="font-weight:400;opacity:.55;font-size:8px;">(opcional)</span>' if opcional else ""
     st.markdown(
-        f'<div style="font-size:9px;font-weight:700;color:#0d3b4f;text-transform:uppercase;'
+        f'<div style="font-size:9px;font-weight:700;color:var(--texto);text-transform:uppercase;'
         f'letter-spacing:1.5px;margin:12px 0 4px 0;padding-bottom:3px;'
-        f'border-bottom:1px solid #e2e8f0;">{titulo}{sfx}</div>',
+        f'border-bottom:1px solid var(--borde);">{titulo}{sfx}</div>',
         unsafe_allow_html=True,
     )
 
@@ -28,29 +28,34 @@ def mostrar() -> None:
     st.markdown(
         """
 <style>
-/* ── Inputs de la página Agregar Partido — tema DeOP claro ── */
+/* ── Inputs de la página Agregar Partido — paleta dinámica por tema ── */
 div[data-testid="stAppViewContainer"] .stTextInput > div > div > input,
 div[data-testid="stAppViewContainer"] .stNumberInput > div > div > input {
-    background: #ffffff !important;
-    border: 1px solid #d0dde8 !important;
+    background: var(--bg-tarjeta) !important;
+    border: 1px solid var(--borde) !important;
     border-radius: 6px !important;
-    color: #1a2c38 !important;
+    color: var(--texto) !important;
     font-size: 13px !important;
 }
 div[data-testid="stAppViewContainer"] .stTextInput > div > div > input:focus,
 div[data-testid="stAppViewContainer"] .stNumberInput > div > div > input:focus {
-    border-color: #f5a623 !important;
-    box-shadow: 0 0 0 2px rgba(245,166,35,.18) !important;
+    border-color: var(--acento-dorado) !important;
+    box-shadow: 0 0 0 2px rgba(var(--acento-dorado-rgb),.18) !important;
 }
 div[data-testid="stAppViewContainer"] .stSelectbox > div > div {
-    background: #ffffff !important;
-    border: 1px solid #d0dde8 !important;
+    background: var(--bg-tarjeta) !important;
+    border: 1px solid var(--borde) !important;
     border-radius: 6px !important;
-    color: #1a2c38 !important;
+    color: var(--texto) !important;
     font-size: 13px !important;
 }
 div[data-testid="stAppViewContainer"] .stSelectbox > div > div:focus-within {
-    border-color: #f5a623 !important;
+    border-color: var(--acento-dorado) !important;
+}
+div[data-testid="stAppViewContainer"] .stTextInput label,
+div[data-testid="stAppViewContainer"] .stNumberInput label,
+div[data-testid="stAppViewContainer"] .stSelectbox label {
+    color: var(--texto) !important;
 }
 </style>
 """,
@@ -111,7 +116,7 @@ div[data-testid="stAppViewContainer"] .stSelectbox > div > div:focus-within {
                               "pm_cl", "pm_ce", "pm_cv"):
                         st.session_state.pop(k, None)
 
-    st.markdown("<hr style='border-color:#e2e8f0;margin:8px 0 4px'>",
+    st.markdown("<hr style='border-color:var(--borde);margin:8px 0 4px'>",
                 unsafe_allow_html=True)
     prefill = st.session_state.get("pm_prefill", {})
 
@@ -274,7 +279,7 @@ div[data-testid="stAppViewContainer"] .stSelectbox > div > div:focus-within {
     ultimo_partido     = st.session_state.get("pm_ultimo_partido", "No sé / Sin datos")
 
     # ── BOTONES DE ACCIÓN ────────────────────────────────────────────────────
-    st.markdown("<hr style='border-color:#e2e8f0;margin:14px 0 10px'>",
+    st.markdown("<hr style='border-color:var(--borde);margin:14px 0 10px'>",
                 unsafe_allow_html=True)
     col_guardar, col_cancelar = st.columns([5, 1])
     with col_guardar:
