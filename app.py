@@ -531,9 +531,10 @@ html, body,
 .stat-valor   { font-size: 14px; font-weight: 700; color: #ffffff; }
 
 /* ── Ocultar controles nativos (desktop) ── */
+/* En Streamlit 1.58: stSidebarCollapseButton = cerrar, stExpandSidebarButton = abrir */
 [data-testid="stSidebarCollapseButton"],
 [data-testid="stSidebarCollapseButton"] button,
-[data-testid="collapsedControl"] { display: none !important; }
+[data-testid="stExpandSidebarButton"]   { display: none !important; }
 #MainMenu { visibility: hidden; }
 footer    { visibility: hidden; }
 
@@ -541,10 +542,39 @@ footer    { visibility: hidden; }
    RESPONSIVE — breakpoint mobile 768px
    ════════════════════════════════════════════════════════════ */
 
-/* ── Hamburguesa ☰: mostrar botón nativo de Streamlit en mobile ── */
 @media (max-width: 767px) {
 
-  /* Botón CERRAR (dentro del sidebar cuando está abierto) */
+  /* ── Hamburguesa ☰ — botón ABRIR sidebar (stExpandSidebarButton) ── */
+  [data-testid="stExpandSidebarButton"] {
+    display: flex !important;
+    position: fixed !important;
+    top: 10px !important;
+    left: 10px !important;
+    z-index: 99999 !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+  [data-testid="stExpandSidebarButton"] button {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 40px !important;
+    height: 40px !important;
+    background: #0d3b4f !important;
+    color: #f4f6f8 !important;
+    border: none !important;
+    border-radius: 8px !important;
+    box-shadow: 0 2px 10px rgba(0,0,0,.45) !important;
+    padding: 0 !important;
+    cursor: pointer !important;
+  }
+  [data-testid="stExpandSidebarButton"] button svg {
+    fill: #f4f6f8 !important;
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  /* ── Botón CERRAR sidebar (stSidebarCollapseButton, dentro del sidebar) ── */
   [data-testid="stSidebarCollapseButton"] {
     display: flex !important;
   }
@@ -554,11 +584,10 @@ footer    { visibility: hidden; }
     justify-content: center !important;
     width: 40px !important;
     height: 40px !important;
-    background: #0d3b4f !important;
+    background: rgba(245,166,35,.15) !important;
     color: #f4f6f8 !important;
     border: none !important;
     border-radius: 8px !important;
-    box-shadow: 0 2px 10px rgba(0,0,0,.45) !important;
     padding: 0 !important;
     cursor: pointer !important;
   }
@@ -568,69 +597,23 @@ footer    { visibility: hidden; }
     height: 18px !important;
   }
 
-  /* Botón ABRIR (fuera del sidebar cuando está cerrado) */
-  [data-testid="collapsedControl"] {
-    display: flex !important;
-    position: fixed !important;
-    top: 10px !important;
-    left: 10px !important;
-    z-index: 99999 !important;
-    align-items: center !important;
-    justify-content: center !important;
-  }
-  [data-testid="collapsedControl"] button {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    width: 40px !important;
-    height: 40px !important;
-    background: #0d3b4f !important;
-    color: #f4f6f8 !important;
-    border: none !important;
-    border-radius: 8px !important;
-    box-shadow: 0 2px 10px rgba(0,0,0,.45) !important;
-    padding: 0 !important;
-    cursor: pointer !important;
-  }
-  [data-testid="collapsedControl"] button svg {
-    fill: #f4f6f8 !important;
-    width: 18px !important;
-    height: 18px !important;
-  }
-
-  /* Sidebar en mobile: overlay con sombra */
-  section[data-testid="stSidebar"] {
-    position: fixed !important;
-    z-index: 9990 !important;
-    height: 100dvh !important;
-    box-shadow: 4px 0 24px rgba(0,0,0,.5) !important;
-  }
-
-  /* Espacio superior en área principal para no tapar el contenido */
-  section.main .block-container { padding-top: 3.5rem !important; }
-}
-
-/* ── Stat cards: 6 → 2 por fila en mobile ── */
-@media (max-width: 767px) {
-  [data-testid="column"]:has(.stat-card-top) {
+  /* ── Stat cards: 6 → 2 por fila ── */
+  /* stColumn es el testid correcto en Streamlit 1.58 (no "column") */
+  [data-testid="stColumn"]:has(.stat-card-top) {
     min-width: calc(50% - 6px) !important;
     max-width: calc(50% - 6px) !important;
     flex: 0 0 calc(50% - 6px) !important;
   }
-}
 
-/* ── Gauges Plotly: 3 → 1 por fila en mobile ── */
-@media (max-width: 767px) {
-  [data-testid="column"]:has([data-testid="stPlotlyChart"]) {
+  /* ── Gauges Plotly: 3 → 1 por fila ── */
+  [data-testid="stColumn"]:has([data-testid="stPlotlyChart"]) {
     min-width: 100% !important;
     max-width: 100% !important;
     flex: none !important;
     margin-bottom: 6px !important;
   }
-}
 
-/* ── Tablas: scroll horizontal en mobile ── */
-@media (max-width: 767px) {
+  /* ── Tablas: scroll horizontal ── */
   .tabla-historial,
   .tabla-cuotas {
     display: block !important;
@@ -810,6 +793,7 @@ def _css_tema_activo() -> str:
 st.markdown(_css_tema_activo(), unsafe_allow_html=True)
 
 # JS mobile: cerrar sidebar al pulsar fuera (solo mobile, una vez por sesión)
+# Testids reales en Streamlit 1.58: stExpandSidebarButton (abrir), stSidebarCollapseButton (cerrar)
 st.markdown(
     '<img src="x" style="display:none;position:absolute;width:0;height:0;" onerror="'
     "(function(){"
@@ -817,11 +801,10 @@ st.markdown(
     "document.addEventListener('click',function(ev){"
     "if(window.innerWidth>=768)return;"
     "var sb=document.querySelector('[data-testid=&quot;stSidebar&quot;]');"
-    "if(!sb)return;"
-    "var r=sb.getBoundingClientRect();if(r.width<10)return;"
+    "if(!sb||sb.getAttribute('aria-expanded')==='false')return;"
     "if(sb.contains(ev.target))return;"
-    "var ec=document.querySelector('[data-testid=&quot;collapsedControl&quot;]');"
-    "if(ec&&ec.contains(ev.target))return;"
+    "var eb=document.querySelector('[data-testid=&quot;stExpandSidebarButton&quot;]');"
+    "if(eb&&eb.contains(ev.target))return;"
     "var cb=document.querySelector('[data-testid=&quot;stSidebarCollapseButton&quot;] button');"
     "if(cb)cb.click();"
     "},true);"
