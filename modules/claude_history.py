@@ -15,10 +15,6 @@ _GREEN  = "#22c55e"
 _YELLOW = "#f59e0b"
 _RED    = "#ef4444"
 _PURP   = "#a78bfa"
-_PANEL  = "#080c14"
-_BORDE  = "#1e1e38"
-_TEXT   = "#5a7a9a"
-_LIGHT  = "#8889aa"
 
 _CONFIG_PLOTLY = {"displayModeBar": False, "staticPlot": False}
 
@@ -26,25 +22,25 @@ _CSS = """
 <style>
 .hc-resumen { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
 .hc-stat {
-    background:#ffffff; border:1px solid #e2e8f0; border-radius:8px;
+    background:var(--bg-tarjeta); border:1px solid var(--borde); border-radius:8px;
     padding:8px 16px; text-align:center; min-width:90px; flex:1;
 }
 .hc-stat-val { font-size:18px; font-weight:800; line-height:1.1; }
-.hc-stat-lbl { font-size:9px; color:#5a7a9a; text-transform:uppercase;
+.hc-stat-lbl { font-size:9px; color:var(--texto-apagado); text-transform:uppercase;
                letter-spacing:1px; margin-top:2px; }
 .hc-card {
-    background:#ffffff; border:1px solid #e2e8f0; border-radius:10px;
-    padding:12px 14px; margin-bottom:6px; border-left:3px solid #cbd5e1;
+    background:var(--bg-tarjeta); border:1px solid var(--borde); border-radius:10px;
+    padding:12px 14px; margin-bottom:6px; border-left:3px solid var(--borde);
 }
-.hc-partido { font-size:13px; font-weight:700; color:#0d3b4f; }
-.hc-fecha   { font-size:10px; color:#5a7a9a; white-space:nowrap; }
+.hc-partido { font-size:13px; font-weight:700; color:var(--acento-morado); }
+.hc-fecha   { font-size:10px; color:var(--texto-apagado); white-space:nowrap; }
 .hc-badges  { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; align-items:center; }
 .hc-badge   { font-size:10px; font-weight:600; border-radius:4px;
               padding:2px 8px; border:1px solid; white-space:nowrap; }
 
-/* ── Botón "Limpiar" — acción destructiva, blanco/borde rojo ── */
+/* ── Botón "Limpiar" — acción destructiva, borde rojo (semántico, fijo) ── */
 [data-testid="stBaseButton-primary"], [data-testid="stBaseButton-primaryFormSubmit"] {
-    background-color: #ffffff !important;
+    background-color: var(--bg-tarjeta) !important;
     color: #dc2626 !important;
     border: 1px solid #dc2626 !important;
 }
@@ -54,19 +50,19 @@ _CSS = """
     border-color: #dc2626 !important;
 }
 
-/* ── Inputs nativos — fondo claro DeOP ── */
+/* ── Inputs nativos — fondo DeOP según tema activo ── */
 .stTextInput > div > div,
 .stTextInput > div > div > input,
 [data-baseweb="input"],
 [data-baseweb="input"] > div,
 [data-baseweb="input"] input {
-    background-color: #ffffff !important;
-    color: #1a2c38 !important;
-    border: 1px solid #cbd5e1 !important;
+    background-color: var(--bg-tarjeta) !important;
+    color: var(--texto) !important;
+    border: 1px solid var(--borde) !important;
 }
 .stTextInput > div > div:focus-within,
 [data-baseweb="input"]:focus-within {
-    border-color: #f5a623 !important;
+    border-color: var(--acento-dorado) !important;
     box-shadow: 0 0 0 1px #f5a62333 !important;
 }
 .stTextArea > div > div,
@@ -74,20 +70,20 @@ _CSS = """
 [data-baseweb="textarea"],
 [data-baseweb="textarea"] > div,
 [data-baseweb="textarea"] textarea {
-    background-color: #ffffff !important;
-    color: #1a2c38 !important;
-    border: 1px solid #cbd5e1 !important;
+    background-color: var(--bg-tarjeta) !important;
+    color: var(--texto) !important;
+    border: 1px solid var(--borde) !important;
 }
 .stSelectbox > div > div,
 [data-baseweb="select"] > div {
-    background-color: #ffffff !important;
-    color: #1a2c38 !important;
-    border: 1px solid #cbd5e1 !important;
+    background-color: var(--bg-tarjeta) !important;
+    color: var(--texto) !important;
+    border: 1px solid var(--borde) !important;
 }
 .stTextInput label,
 .stTextArea label,
 .stSelectbox label {
-    color: #5a7a9a !important;
+    color: var(--texto-apagado) !important;
     font-size: 11px !important;
 }
 /* Placeholder */
@@ -97,32 +93,32 @@ _CSS = """
     opacity: 1 !important;
 }
 
-/* ── Expander — barra clara DeOP ── */
+/* ── Expander — barra DeOP según tema activo ── */
 [data-testid="stExpander"] details summary {
-    background-color: #ffffff !important;
-    color: #0d3b4f !important;
-    border: 1px solid #e2e8f0 !important;
+    background-color: var(--bg-tarjeta) !important;
+    color: var(--acento-morado) !important;
+    border: 1px solid var(--borde) !important;
     border-radius: 6px !important;
     padding: 7px 12px !important;
 }
 [data-testid="stExpander"] details summary:hover {
-    background-color: #fff9e6 !important;
-    color: #0d3b4f !important;
-    border-color: #f5a623 !important;
+    background-color: var(--bg-alerta-aviso) !important;
+    color: var(--acento-morado) !important;
+    border-color: var(--acento-dorado) !important;
 }
 [data-testid="stExpander"] details summary > span {
     color: inherit !important;
 }
 [data-testid="stExpander"] details summary svg {
-    fill: #5a7a9a !important;
+    fill: var(--texto-apagado) !important;
 }
 [data-testid="stExpander"] details[open] summary {
     border-radius: 6px 6px 0 0 !important;
-    border-bottom-color: #ffffff !important;
+    border-bottom-color: var(--bg-tarjeta) !important;
 }
 [data-testid="stExpanderDetails"] {
-    background-color: #ffffff !important;
-    border: 1px solid #e2e8f0 !important;
+    background-color: var(--bg-tarjeta) !important;
+    border: 1px solid var(--borde) !important;
     border-top: none !important;
     border-radius: 0 0 6px 6px !important;
 }
@@ -236,7 +232,7 @@ def mostrar() -> None:
     historial = _cargar()
 
     st.markdown(
-        '<div style="font-size:10px;color:#0d3b4f;font-weight:800;letter-spacing:2px;'
+        '<div style="font-size:10px;color:var(--acento-morado);font-weight:800;letter-spacing:2px;'
         'margin-bottom:10px;">'
         '◈ HISTORIAL DE ANÁLISIS — CLAUDE AI</div>',
         unsafe_allow_html=True,
@@ -244,8 +240,8 @@ def mostrar() -> None:
 
     if not historial:
         st.markdown(
-            '<div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;'
-            'padding:24px;text-align:center;color:#5a7a9a;font-size:13px;">'
+            '<div style="background:var(--bg-tarjeta);border:1px solid var(--borde);border-radius:8px;'
+            'padding:24px;text-align:center;color:var(--texto-apagado);font-size:13px;">'
             'Sin análisis guardados aún.<br>'
             '<span style="font-size:11px;opacity:.7">'
             'Pulsa "Analizar con Claude AI" para generar el primer análisis.</span>'
@@ -268,7 +264,7 @@ def mostrar() -> None:
 
     st.markdown(
         f'<div class="hc-resumen">'
-        f'<div class="hc-stat"><div class="hc-stat-val" style="color:#0d3b4f;">{total}</div>'
+        f'<div class="hc-stat"><div class="hc-stat-val" style="color:var(--acento-morado);">{total}</div>'
         f'<div class="hc-stat-lbl">Total</div></div>'
         f'<div class="hc-stat"><div class="hc-stat-val" style="color:{_GREEN};">{apostados}</div>'
         f'<div class="hc-stat-lbl">Apostados</div></div>'
@@ -314,14 +310,14 @@ def mostrar() -> None:
 
     if filtro and not historial_vis:
         st.markdown(
-            '<div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;'
-            'padding:14px;text-align:center;color:#5a7a9a;font-size:12px;margin-top:8px;">'
+            '<div style="background:var(--bg-tarjeta);border:1px solid var(--borde);border-radius:8px;'
+            'padding:14px;text-align:center;color:var(--texto-apagado);font-size:12px;margin-top:8px;">'
             'Sin resultados para ese filtro.</div>',
             unsafe_allow_html=True,
         )
         return
 
-    st.markdown("<hr style='border-color:#e2e8f0;margin:4px 0 10px'>", unsafe_allow_html=True)
+    st.markdown("<hr style='border-color:var(--borde);margin:4px 0 10px'>", unsafe_allow_html=True)
 
     # ── Tarjetas ────────────────────────────────────────────────────────
     for i, entrada in enumerate(historial_vis):
@@ -352,7 +348,7 @@ def mostrar() -> None:
                 f'<div class="hc-badges">'
                 f'<span class="hc-badge" style="color:{_PURP};border-color:#a78bfa44;background:#a78bfa11;">{mercado}</span>'
                 f'<span class="hc-badge" style="color:{edge_col};border-color:{edge_col}44;background:{edge_col}11;">Edge {sign_e}{edge}%</span>'
-                f'<span class="hc-badge" style="color:#5a7a9a;border-color:#cbd5e1;background:#f1f5f9;">{puntos}/5 pts</span>'
+                f'<span class="hc-badge" style="color:var(--texto-apagado);border-color:var(--borde);background:var(--bg-elemento);">{puntos}/5 pts</span>'
                 f'<span class="hc-badge" style="color:{col_v};border-color:{col_vb};background:{col_v}11;'
                 f'font-size:11px;font-weight:700;">{verdict}</span>'
                 f'</div>'
@@ -367,11 +363,11 @@ def mostrar() -> None:
             _mostrar_scada(entrada, idx=i)
 
             st.markdown(
-                '<hr style="border-color:#e2e8f0;margin:10px 0 8px">',
+                '<hr style="border-color:var(--borde);margin:10px 0 8px">',
                 unsafe_allow_html=True,
             )
             st.markdown(
-                '<div style="font-size:10px;color:#0d3b4f;font-weight:800;letter-spacing:1.5px;'
+                '<div style="font-size:10px;color:var(--acento-morado);font-weight:800;letter-spacing:1.5px;'
                 'margin-bottom:8px;">'
                 '◈ ANÁLISIS CLAUDE</div>',
                 unsafe_allow_html=True,
@@ -384,8 +380,8 @@ def mostrar() -> None:
             txt_der   = "\n\n---\n\n".join(secciones[mitad:]) if len(secciones) > 1 else ""
 
             _estilo_caja = (
-                "background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;"
-                "padding:14px 16px;height:100%;color:#1a2c38;"
+                "background:var(--bg-tarjeta);border:1px solid var(--borde);border-radius:8px;"
+                "padding:14px 16px;height:100%;color:var(--texto);"
             )
             col_txt_izq, col_txt_der = st.columns(2, gap="medium")
             with col_txt_izq:

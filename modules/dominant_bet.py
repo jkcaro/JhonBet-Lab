@@ -23,11 +23,11 @@ _RUTA_HIST    = Path(__file__).parent.parent / "data" / "dominant_history.json"
 
 _CSS = """
 <style>
-.dom-panel { background:#ffffff; border:1px solid #e2e8f0; border-radius:6px;
+.dom-panel { background:var(--bg-tarjeta); border:1px solid var(--borde); border-radius:6px;
              padding:10px 14px; margin-bottom:8px;
              font-family:'Courier New',monospace; }
-.dom-hdr   { font-size:9px; color:#0d3b4f; font-weight:800; letter-spacing:2px;
-             border-bottom:2px solid #f5a623; padding-bottom:5px; margin-bottom:10px; }
+.dom-hdr   { font-size:9px; color:var(--acento-morado); font-weight:800; letter-spacing:2px;
+             border-bottom:2px solid var(--acento-dorado); padding-bottom:5px; margin-bottom:10px; }
 </style>"""
 
 
@@ -251,15 +251,16 @@ def mostrar() -> None:
         GREEN, RED, YELLOW,
         donut_ambos_marcan, semaforo_html,
         gauge_donut_gris, tarjeta_veredicto_html,
-        DEOP_PETROLEO, DEOP_DORADO,
+        _paleta_activa,
     )
 
+    paleta = _paleta_activa()
     st.markdown(_CSS_COMPACTO + _CSS, unsafe_allow_html=True)
 
     d = _leer_datos_sesion()
     if not d["tiene_datos"]:
         st.markdown(
-            '<div class="dom-panel" style="color:#5a7a9a;font-size:12px;">'
+            '<div class="dom-panel" style="color:var(--texto-apagado);font-size:12px;">'
             'Selecciona un partido en <b>Análisis de Partidos</b> '
             'para activar la detección de dominancia.</div>',
             unsafe_allow_html=True,
@@ -299,8 +300,8 @@ def mostrar() -> None:
 
     # Cabecera
     st.markdown(
-        f'<div style="font-size:14px;color:#5a7a9a;margin-bottom:12px;">'
-        f'⚽ <span style="color:{DEOP_PETROLEO};font-weight:700;">{partido}</span></div>',
+        f'<div style="font-size:14px;color:var(--texto-apagado);margin-bottom:12px;">'
+        f'⚽ <span style="color:{paleta["texto"]};font-weight:700;">{partido}</span></div>',
         unsafe_allow_html=True,
     )
 
@@ -315,31 +316,31 @@ def mostrar() -> None:
         st.markdown(
             f'<div style="display:flex;gap:6px;margin-bottom:10px;">'
 
-            f'<div style="flex:1;background:#f0fdf4;border:1px solid #bbf0cc;'
+            f'<div style="flex:1;background:var(--bg-alerta-exito);border:1px solid #bbf0cc;'
             f'border-radius:6px;padding:8px 6px;text-align:center;">'
-            f'<div style="font-size:9px;color:#5a7a9a;text-transform:uppercase;'
+            f'<div style="font-size:9px;color:var(--texto-apagado);text-transform:uppercase;'
             f'letter-spacing:.5px;margin-bottom:2px;">{nom_fav[:12]}</div>'
             f'<div style="font-size:24px;font-weight:900;color:{GREEN};line-height:1;">'
             f'{xg_fav:.2f}</div>'
-            f'<div style="font-size:9px;color:#5a7a9a;">xG favorito</div>'
+            f'<div style="font-size:9px;color:var(--texto-apagado);">xG favorito</div>'
             f'</div>'
 
-            f'<div style="flex:1;background:#fff9e6;border:1px solid #f5d061;'
+            f'<div style="flex:1;background:var(--bg-alerta-aviso);border:1px solid #f5d061;'
             f'border-radius:6px;padding:8px 6px;text-align:center;">'
-            f'<div style="font-size:9px;color:#5a7a9a;text-transform:uppercase;'
+            f'<div style="font-size:9px;color:var(--texto-apagado);text-transform:uppercase;'
             f'letter-spacing:.5px;margin-bottom:2px;">P VICTORIA</div>'
             f'<div style="font-size:24px;font-weight:900;color:#b8780f;line-height:1;">'
             f'{p_victoria*100:.1f}%</div>'
-            f'<div style="font-size:9px;color:#5a7a9a;">probabilidad</div>'
+            f'<div style="font-size:9px;color:var(--texto-apagado);">probabilidad</div>'
             f'</div>'
 
-            f'<div style="flex:1;background:#fef2f2;border:1px solid #f3c6c6;'
+            f'<div style="flex:1;background:var(--bg-alerta-peligro);border:1px solid #f3c6c6;'
             f'border-radius:6px;padding:8px 6px;text-align:center;">'
-            f'<div style="font-size:9px;color:#5a7a9a;text-transform:uppercase;'
+            f'<div style="font-size:9px;color:var(--texto-apagado);text-transform:uppercase;'
             f'letter-spacing:.5px;margin-bottom:2px;">{nom_riv[:12]}</div>'
             f'<div style="font-size:24px;font-weight:900;color:{RED};line-height:1;">'
             f'{xg_rival:.2f}</div>'
-            f'<div style="font-size:9px;color:#5a7a9a;">xG rival</div>'
+            f'<div style="font-size:9px;color:var(--texto-apagado);">xG rival</div>'
             f'</div>'
 
             f'</div>',
@@ -348,20 +349,20 @@ def mostrar() -> None:
 
         # ELO
         diff_elo = elo_fav - elo_riv
-        col_elo  = GREEN if diff_elo >= DIFF_ELO_MIN else (YELLOW if diff_elo > 0 else "#5a7a9a")
+        col_elo  = GREEN if diff_elo >= DIFF_ELO_MIN else (YELLOW if diff_elo > 0 else "var(--texto-apagado)")
         if elo_fav == 0 and elo_riv == 0:
             elo_inner = (
-                f'<span style="color:#5a7a9a;font-size:10px;">'
+                f'<span style="color:var(--texto-apagado);font-size:10px;">'
                 f'ELO no disponible — introdúcelo en Análisis de Partidos</span>'
             )
         else:
             elo_inner = (
                 f'<div style="display:flex;justify-content:space-between;align-items:center;">'
-                f'<span style="font-size:11px;color:#1a2c38;">'
+                f'<span style="font-size:11px;color:{paleta["texto"]};">'
                 f'{nom_fav[:13]} <b style="color:#b8780f;">{elo_fav:.0f}</b></span>'
                 f'<span style="font-size:14px;font-weight:800;color:{col_elo};">'
                 f'Δ {diff_elo:+.0f}</span>'
-                f'<span style="font-size:11px;color:#1a2c38;">'
+                f'<span style="font-size:11px;color:{paleta["texto"]};">'
                 f'{nom_riv[:13]} <b style="color:{RED};">{elo_riv:.0f}</b></span>'
                 f'</div>'
             )
@@ -380,7 +381,7 @@ def mostrar() -> None:
             filas_r += (
                 f'<div style="display:flex;justify-content:space-between;'
                 f'align-items:center;padding:5px 0;border-bottom:1px solid #eef2f5;">'
-                f'<span style="font-size:10px;color:#1a2c38;">{"✅" if ok else "❌"} {label}</span>'
+                f'<span style="font-size:10px;color:{paleta["texto"]};">{"✅" if ok else "❌"} {label}</span>'
                 f'<span style="font-size:11px;font-weight:700;color:{col_r};">{valor}</span>'
                 f'</div>'
             )
@@ -389,7 +390,7 @@ def mostrar() -> None:
             f'<div class="dom-panel">'
             f'<div class="dom-hdr">◈ REGLAS DE DOMINANCIA</div>'
             f'{filas_r}'
-            f'<div style="margin-top:8px;text-align:right;font-size:10px;color:#5a7a9a;">'
+            f'<div style="margin-top:8px;text-align:right;font-size:10px;color:var(--texto-apagado);">'
             f'Reglas: <b style="color:{col_n};font-size:16px;">{n_ok}</b>/4'
             f'</div>'
             f'</div>',
@@ -539,8 +540,8 @@ def mostrar() -> None:
                     f'<div style="display:flex;justify-content:space-between;'
                     f'align-items:center;padding:6px 0;border-bottom:1px solid #eef2f5;">'
                     f'<div>'
-                    f'<div style="font-size:11px;color:#1a2c38;font-weight:600;">{nom_ap}</div>'
-                    f'<div style="font-size:9px;color:#5a7a9a;">{desc_ap}</div>'
+                    f'<div style="font-size:11px;color:{paleta["texto"]};font-weight:600;">{nom_ap}</div>'
+                    f'<div style="font-size:9px;color:var(--texto-apagado);">{desc_ap}</div>'
                     f'</div>'
                     f'<span style="font-size:15px;font-weight:900;color:{GREEN};">{prob_ap}</span>'
                     f'</div>'
@@ -555,13 +556,13 @@ def mostrar() -> None:
 
         # 3. Gauge Edge (Over 1.5)
         st.plotly_chart(
-            gauge_donut_gris(max(0.0, edge_o15), "Edge %", DEOP_DORADO),
+            gauge_donut_gris(max(0.0, edge_o15), "Edge %", paleta["dorado"]),
             use_container_width=True, config=_CONFIG, key="dom_gauge_edge",
         )
 
         # 4. Gauge Confianza (% reglas cumplidas)
         st.plotly_chart(
-            gauge_donut_gris(conf_pct, "Confianza %", DEOP_PETROLEO),
+            gauge_donut_gris(conf_pct, "Confianza %", paleta["petroleo"]),
             use_container_width=True, config=_CONFIG, key="dom_gauge_conf",
         )
 

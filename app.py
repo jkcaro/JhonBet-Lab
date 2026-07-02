@@ -13,6 +13,7 @@ Para iniciar:  streamlit run app.py
 
 import json          # Para leer/escribir el archivo de configuración (config.json)
 import os
+import re
 import sys
 from datetime import date as _date_today
 from pathlib import Path
@@ -259,7 +260,7 @@ def _barra_stats_top() -> None:
     if sin_datos or total_apostado < 0.01:
         roi      = 0.0
         roi_disp = "Sin datos"
-        roi_color = "#5a7a9a"
+        roi_color = "var(--texto-apagado)"
     else:
         roi       = round(neto / total_apostado * 100, 1)
         roi_disp  = f"{'+'if roi>=0 else ''}{roi}%"
@@ -278,9 +279,9 @@ def _barra_stats_top() -> None:
 
     metricas = [
         ("ROI (30 días)",    roi_disp,                         roi_color, _sparkline_svg(serie_reciente, roi_color)),
-        ("Bankroll",         f"€{saldo:.2f}",                  "#0d3b4f",  _sparkline_svg(serie_saldo,  "#2563eb")),
+        ("Bankroll",         f"€{saldo:.2f}",                  "var(--acento-morado)",  _sparkline_svg(serie_saldo,  "var(--acento-azul)")),
         ("Yield",            f"{sign(yield_val)}{yield_val:.1f}%", yld_color, _sparkline_svg(serie_reciente[-10:] or [0,0], yld_color)),
-        ("Apuestas Totales", str(total),                       "#0d3b4f",  _sparkline_svg(serie_total,  "#5a7a9a")),
+        ("Apuestas Totales", str(total),                       "var(--acento-morado)",  _sparkline_svg(serie_total,  "var(--texto-apagado)")),
         ("Ganadas",          f"{ganadas} ({win_rate}%)",       "#16a34a",  _sparkline_svg([ganadas]*4 or [0,0], "#16a34a")),
         ("Perdidas",         f"{perdidas} ({lose_rate}%)",     "#dc2626",  _sparkline_svg([perdidas]*4 or [0,0], "#dc2626")),
     ]
@@ -323,11 +324,13 @@ ESTILOS_CSS = """
     --acento-verde:      #16a34a;
     --acento-morado:     #0d3b4f;
     --acento-dorado:     #f5a623;
+    --acento-dorado-rgb: 245,166,35;
     --acento-azul:       #2563eb;
     --acento-rojo:       #dc2626;
     --bg-elemento:       #f1f5f9;
     --bg-alerta-exito:   #eef6fb;
     --bg-alerta-peligro: #fdecec;
+    --bg-alerta-aviso:   #fff7e6;
     --boton-bg:          linear-gradient(135deg, #0d3b4f, #14506b);
     --logo-color:        #0d3b4f;
     --bg-principal:      #f4f6f8;
@@ -370,7 +373,12 @@ html, body,
     color: #ffffff !important;
 }
 
-/* ── Nav buttons del sidebar — estilo sutil sobre petróleo ── */
+/* ── Nav buttons del sidebar — altura fija 36px para no saltar al cambiar página ── */
+[data-testid="stSidebar"] .stButton {
+    margin: 1px 0 !important;
+    padding: 0 !important;
+    line-height: 1 !important;
+}
 [data-testid="stSidebar"] .stButton > button {
     background: transparent !important;
     color: #aac4d4 !important;
@@ -378,15 +386,21 @@ html, body,
     border-left: 2px solid transparent !important;
     border-radius: 0 6px 6px 0 !important;
     text-align: left !important;
-    padding: 7px 12px !important;
+    padding: 0 12px !important;
     font-size: 12px !important;
     font-weight: 500 !important;
     letter-spacing: .2px !important;
+    height: 36px !important;
+    min-height: 36px !important;
+    max-height: 36px !important;
+    display: flex !important;
+    align-items: center !important;
+    width: 100% !important;
 }
 [data-testid="stSidebar"] .stButton > button:hover {
-    background: rgba(245,166,35,0.14) !important;
-    color: #f5a623 !important;
-    border-left-color: #f5a623 !important;
+    background: rgba(var(--acento-dorado-rgb),0.14) !important;
+    color: var(--acento-dorado) !important;
+    border-left-color: var(--acento-dorado) !important;
 }
 
 /* ── Categorías del sidebar (estilo DeOP) ── */
@@ -431,23 +445,23 @@ html, body,
     align-items: center;
     justify-content: space-between;
 }
-.logo-texto   { font-size: 14px; font-weight: 800; color: #0d3b4f; }
-.logo-punto   { color: #f5a623; }
+.logo-texto   { font-size: 14px; font-weight: 800; color: var(--acento-morado); }
+.logo-punto   { color: var(--acento-dorado); }
 .info-saldo   { color: #16a34a; font-weight: 700; font-size: 12px; }
-.info-usuario { font-size: 10px; color: #5a7a9a; }
+.info-usuario { font-size: 10px; color: var(--texto-apagado); }
 
 /* ── Top stats bar ── */
 .stat-card-top {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-top: 2px solid #f5a623;
+    background: var(--bg-tarjeta);
+    border: 1px solid var(--borde);
+    border-top: 2px solid var(--acento-dorado);
     border-radius: 8px;
     padding: 10px 12px 8px;
     position: relative;
 }
 .stat-card-label {
     font-size: 9px;
-    color: #5a7a9a;
+    color: var(--texto-apagado);
     text-transform: uppercase;
     letter-spacing: 1px;
     margin-bottom: 3px;
@@ -457,55 +471,55 @@ html, body,
     font-weight: 800;
     line-height: 1.1;
     margin-bottom: 3px;
-    color: #0d3b4f;
+    color: var(--acento-morado);
 }
 .stat-card-chart { opacity: 0.85; line-height: 0; display: block; }
 
 /* ── Probabilidades ── */
 .fila-prob    { display: flex; align-items: center; gap: 6px; margin: 4px 0; font-size: 12px; }
-.insignia     { border-radius: 4px; padding: 1px 7px; font-weight: 700; font-size: 11px; background: #f1f5f9; }
+.insignia     { border-radius: 4px; padding: 1px 7px; font-weight: 700; font-size: 11px; background: var(--bg-elemento); color: var(--texto); }
 .prob-verde   { color: #16a34a; }
 .prob-amarillo{ color: #b8780f; }
 .prob-azul    { color: #2563eb; }
 .prob-rojo    { color: #dc2626; }
-.texto-apagado{ color: #5a7a9a; }
+.texto-apagado{ color: var(--texto-apagado); }
 .texto-dorado { color: #b8780f; font-weight: 700; }
 .texto-azul   { color: #2563eb; }
 .texto-rojo   { color: #dc2626; }
 .texto-valor  { color: #16a34a; font-weight: 700; }
-.etiqueta-seccion { font-size: 10px; font-weight: 700; color: #0d3b4f; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .8px; }
+.etiqueta-seccion { font-size: 10px; font-weight: 700; color: var(--acento-morado); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .8px; }
 
 /* ── Cuota cards ── */
-.cuota-card       { background: #f1f5f9; border: 1px solid #dbe4ec; border-radius: 8px; padding: 8px 6px; text-align: center; }
-.cuota-card-label { font-size: 10px; color: #5a7a9a; text-transform: uppercase; }
-.cuota-card-value { font-size: 22px; font-weight: 800; color: #0d3b4f; line-height: 1.1; }
-.cuota-card-sub   { font-size: 10px; color: #5a7a9a; }
+.cuota-card       { background: var(--bg-elemento); border: 1px solid var(--borde); border-radius: 8px; padding: 8px 6px; text-align: center; }
+.cuota-card-label { font-size: 10px; color: var(--texto-apagado); text-transform: uppercase; }
+.cuota-card-value { font-size: 22px; font-weight: 800; color: var(--acento-morado); line-height: 1.1; }
+.cuota-card-sub   { font-size: 10px; color: var(--texto-apagado); }
 
 /* ── Tablas de cuotas ── */
 .tabla-cuotas { width: 100%; border-collapse: collapse; font-size: 12px; }
-.tabla-cuotas th { color: #0d3b4f; font-weight: 700; padding: 5px 8px; border-bottom: 1px solid #e2e8f0; text-align: center; }
+.tabla-cuotas th { color: var(--acento-morado); font-weight: 700; padding: 5px 8px; border-bottom: 1px solid var(--borde); text-align: center; }
 .tabla-cuotas th:first-child { text-align: left; }
-.tabla-cuotas td { padding: 4px 8px; text-align: center; color: #1a2c38; border-bottom: 1px solid #eef2f5; }
-.tabla-cuotas td:first-child { text-align: left; color: #5a7a9a; font-weight: 600; }
-.tabla-cuotas tr:hover td { background: #f1f5f9; }
+.tabla-cuotas td { padding: 4px 8px; text-align: center; color: var(--texto); border-bottom: 1px solid var(--borde); }
+.tabla-cuotas td:first-child { text-align: left; color: var(--texto-apagado); font-weight: 600; }
+.tabla-cuotas tr:hover td { background: var(--bg-elemento); }
 .cuota-mejor  { color: #16a34a !important; font-weight: 800; }
-.col-resultado{ text-align: left !important; color: #5a7a9a; font-weight: 600; }
+.col-resultado{ text-align: left !important; color: var(--texto-apagado); font-weight: 600; }
 
 /* ── Barras predicción ── */
 .fila-pred     { margin: 6px 0; }
-.pred-etiqueta { font-size: 11px; color: #5a7a9a; margin-bottom: 3px; }
-.barra-fondo   { background: #f1f5f9; border-radius: 4px; height: 20px; overflow: hidden; }
+.pred-etiqueta { font-size: 11px; color: var(--texto-apagado); margin-bottom: 3px; }
+.barra-fondo   { background: var(--bg-elemento); border-radius: 4px; height: 20px; overflow: hidden; }
 .barra-relleno { height: 100%; border-radius: 3px; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; font-size: 11px; font-weight: 700; color: #fff; }
 
 /* ── Alertas ── */
-.alerta-peligro  { background: #fdecec; border: 1px solid #dc2626; border-radius: 6px; padding: 6px 10px; margin: 4px 0; font-size: 12px; color: #b91c1c; }
-.alerta-exito    { background: #eef6fb; border: 1px solid #2563eb; border-radius: 6px; padding: 6px 10px; margin: 4px 0; font-size: 12px; color: #1a2c38; line-height: 1.65; }
+.alerta-peligro  { background: var(--bg-alerta-peligro); border: 1px solid #dc2626; border-radius: 6px; padding: 6px 10px; margin: 4px 0; font-size: 12px; color: #b91c1c; }
+.alerta-exito    { background: var(--bg-alerta-exito); border: 1px solid #2563eb; border-radius: 6px; padding: 6px 10px; margin: 4px 0; font-size: 12px; color: var(--texto); line-height: 1.65; }
 .insignia-estado { display: inline-block; border-radius: 4px; border: 1px solid; padding: 2px 10px; font-size: 11px; font-weight: 700; }
 
 /* ── Historial ── */
 .tabla-historial { width: 100%; border-collapse: collapse; font-size: 12px; }
-.tabla-historial th { color: #0d3b4f; padding: 4px 6px; border-bottom: 1px solid #e2e8f0; text-align: left; }
-.tabla-historial td { padding: 4px 6px; border-bottom: 1px solid #eef2f5; color: #1a2c38; }
+.tabla-historial th { color: var(--acento-morado); padding: 4px 6px; border-bottom: 1px solid var(--borde); text-align: left; }
+.tabla-historial td { padding: 4px 6px; border-bottom: 1px solid var(--borde); color: var(--texto); }
 .ganado       { color: #16a34a; font-weight: 700; }
 .perdido      { color: #dc2626; font-weight: 700; }
 .gan-positiva { color: #16a34a; font-weight: 700; }
@@ -530,7 +544,7 @@ st.markdown(ESTILOS_CSS, unsafe_allow_html=True)
 # ─────────────────────────────────────────────────────────────────────
 #  TEMAS VISUALES — estilo DeOP Connect (claro / oscuro)
 # ─────────────────────────────────────────────────────────────────────
-NOMBRES_TEMAS = ["DeOP Claro", "DeOP Oscuro"]
+NOMBRES_TEMAS = ["DeOP Claro", "DeOP Oscuro", "Codere"]
 
 _TEMAS_CSS: dict[str, str] = {
     "DeOP Claro": """
@@ -541,15 +555,18 @@ _TEMAS_CSS: dict[str, str] = {
     --bg-tarjeta:        #ffffff;
     --borde:             #e2e8f0;
     --borde-activo:      #f5a623;
+    --texto:             #1a2c38;
     --texto-apagado:     #5a7a9a;
     --acento-verde:      #16a34a;
     --acento-morado:     #0d3b4f;
     --acento-dorado:     #f5a623;
+    --acento-dorado-rgb: 245,166,35;
     --acento-azul:       #2563eb;
     --acento-rojo:       #dc2626;
     --bg-elemento:       #f1f5f9;
     --bg-alerta-exito:   #eef6fb;
     --bg-alerta-peligro: #fdecec;
+    --bg-alerta-aviso:   #fff7e6;
     --boton-bg:          linear-gradient(135deg, #0d3b4f, #14506b);
     --logo-color:        #0d3b4f;
 }
@@ -569,15 +586,18 @@ html, body,
     --bg-tarjeta:        #122430;
     --borde:             #1d3a47;
     --borde-activo:      #f5a623;
+    --texto:             #e6eef2;
     --texto-apagado:     #7fa0b3;
     --acento-verde:      #22c55e;
     --acento-morado:     #4fc3f7;
     --acento-dorado:     #f5a623;
+    --acento-dorado-rgb: 245,166,35;
     --acento-azul:       #4fc3f7;
     --acento-rojo:       #ef4444;
     --bg-elemento:       #18303c;
     --bg-alerta-exito:   #0d2230;
     --bg-alerta-peligro: #2a1414;
+    --bg-alerta-aviso:   #2a2410;
     --boton-bg:          linear-gradient(135deg, #0d3b4f, #14506b);
     --logo-color:        #f5a623;
 }
@@ -589,6 +609,72 @@ html, body,
 .tarjeta { background-color: #122430 !important; border-color: #1d3a47 !important; color: #e6eef2 !important; }
 .titulo-tarjeta { color: #f5a623 !important; }
 [data-testid="metric-container"] { background-color: #122430 !important; border: 1px solid #1d3a47 !important; }
+</style>""",
+
+    "Codere": """
+<style>
+/* Codere — negro/gris oscuro + verde Codere */
+:root {
+    --bg-principal:      #12121e;
+    --bg-tarjeta:        #1e1e30;
+    --borde:             #2a2a3e;
+    --borde-activo:      #00e676;
+    --texto:             #ffffff;
+    --texto-apagado:     #b0b8d0;
+    --acento-verde:      #00e676;
+    --acento-morado:     #ffffff;
+    --acento-dorado:     #00e676;
+    --acento-dorado-rgb: 0,230,118;
+    --acento-azul:       #00e676;
+    --acento-rojo:       #ef4444;
+    --bg-elemento:       #252538;
+    --bg-alerta-exito:   #0d2818;
+    --bg-alerta-peligro: #2a1414;
+    --bg-alerta-aviso:   #16241a;
+    --boton-bg:          #00e676;
+    --logo-color:        #00e676;
+}
+html, body,
+[data-testid="stApp"],
+[data-testid="stAppViewContainer"] { background-color: #12121e !important; color: #ffffff !important; }
+[data-testid="stHeader"]           { background-color: #12121e !important; }
+[data-testid="stSidebar"]          { background-color: #0d0d1a !important; }
+.tarjeta {
+    background-color: #1e1e30 !important;
+    border-color: #2a2a3e !important;
+    color: #ffffff !important;
+}
+.titulo-tarjeta {
+    background: #252538 !important;
+    color: #00e676 !important;
+    border-bottom: 2px solid #00e676 !important;
+    margin: -14px -16px 10px -16px !important;
+    padding: 8px 16px 7px !important;
+    border-radius: 10px 10px 0 0 !important;
+}
+[data-testid="metric-container"] { background-color: #1e1e30 !important; border: 1px solid #2a2a3e !important; }
+
+/* Botones principales — verde Codere, texto negro (los del sidebar
+   conservan su propio estilo transparente por mayor especificidad) */
+.stButton > button,
+.stFormSubmitButton > button {
+    background: #00e676 !important;
+    color: #000000 !important;
+}
+.stButton > button:hover,
+.stFormSubmitButton > button:hover {
+    background: #00c853 !important;
+    opacity: 1 !important;
+    color: #000000 !important;
+}
+[data-testid="stSidebar"] .stButton > button { color: #b0b8d0 !important; }
+
+/* Categorías del sidebar */
+.deop-categoria { color: #00e676 !important; }
+
+/* Stat boxes (sidebar) */
+.caja-stat  { background: rgba(0,230,118,0.06) !important; border-color: rgba(0,230,118,0.18) !important; }
+.stat-valor { color: #ffffff !important; }
 </style>""",
 }
 
@@ -663,6 +749,7 @@ if st.session_state.get("_limpieza_fecha") != _HOY_LIMPIEZA:
 PAGINAS_CATEGORIAS: dict[str, list[tuple[str, str]]] = {
     "ANÁLISIS": [
         ("🏠", "Análisis de Partidos"),        # Dashboard principal rediseñado (DeOP)
+        ("➕", "Agregar Partido"),             # Formulario para añadir partido manual
         ("🤖", "Claude AI"),                   # Análisis detallado por mercado (texto completo)
         ("📊", "Comparación de Cuotas"),       # Tabla de cuotas por casa de apuestas
         ("📈", "Modelo Predictivo"),           # Simulador xG con gráficos Plotly
@@ -691,11 +778,11 @@ with st.sidebar:
     else:
         st.markdown(
             '<div style="padding:6px 0 12px 0;">'
-            '<div style="font-size:9px;font-weight:700;color:#f5a623;letter-spacing:2.5px;'
+            '<div style="font-size:9px;font-weight:700;color:var(--acento-dorado);letter-spacing:2.5px;'
             'text-transform:uppercase;margin-bottom:5px;opacity:.9;">Trading Dashboard</div>'
             '<div style="font-size:17px;font-weight:800;line-height:1.1;">'
             '<span style="color:#ffffff;">📊 JhonBet</span>'
-            '<span style="color:#f5a623;"> Lab</span>'
+            '<span style="color:var(--acento-dorado);"> Lab</span>'
             '</div>'
             '</div>',
             unsafe_allow_html=True,
@@ -706,29 +793,42 @@ with st.sidebar:
     _nav_label  = next((f"{i} {n}" for i, n in PAGINAS if n == _pagina_nav), "")
     if _nav_label:
         st.markdown(
-            f'<div style="font-size:9px;color:#f5a623;background:rgba(245,166,35,.14);'
-            f'border-left:2px solid #f5a623;border-radius:0 4px 4px 0;'
+            f'<div style="font-size:9px;color:var(--acento-dorado);'
+            f'background:rgba(var(--acento-dorado-rgb),.14);'
+            f'border-left:2px solid var(--acento-dorado);border-radius:0 4px 4px 0;'
             f'padding:3px 8px;margin-bottom:6px;letter-spacing:.3px;">'
             f'{_nav_label}</div>',
             unsafe_allow_html=True,
         )
 
-    # Menú de navegación — agrupado por categorías estilo DeOP
+    # ── Menú de navegación — todos st.button (mismo DOM, sin salto al cambiar página) ──
+    # La key usa solo ASCII para que Streamlit genere una clase CSS predecible:
+    # key="nav_analisis_de_partidos" → clase "st-key-nav_analisis_de_partidos"
+    # Inyectamos un bloque <style> que pinta el botón activo en dorado sin
+    # alterar la estructura DOM (misma altura, mismo margin, mismo wrapper).
+    def _nav_key(nombre: str) -> str:
+        return "nav_" + re.sub(r"[^a-z0-9]", "_", nombre.lower())
+
+    _clase_activa = _nav_key(_pagina_nav)
+    st.markdown(
+        f"<style>"
+        f".st-key-{_clase_activa} button {{"
+        f"  background:rgba(245,166,35,.15) !important;"
+        f"  color:#f5a623 !important;"
+        f"  border-left-color:#f5a623 !important;"
+        f"  font-weight:700 !important;"
+        f"}}"
+        f"</style>",
+        unsafe_allow_html=True,
+    )
+
     for _categoria, _paginas_grupo in PAGINAS_CATEGORIAS.items():
         st.markdown(f'<div class="deop-categoria">{_categoria}</div>', unsafe_allow_html=True)
         for icono, nombre_pagina in _paginas_grupo:
-            if st.button(f"{icono}  {nombre_pagina}", key=f"nav_{nombre_pagina}",
+            if st.button(f"{icono}  {nombre_pagina}", key=_nav_key(nombre_pagina),
                          use_container_width=True, type="secondary"):
                 st.session_state.pagina_activa = nombre_pagina
                 st.rerun()
-            # Acción rápida bajo "Análisis de Partidos": abre el mismo diálogo
-            # modal (_dialogo_partido_manual) que antes vivía en el contenido
-            # principal de la página.
-            if nombre_pagina == "Análisis de Partidos":
-                if st.button("➕  Agregar partido manual", key="btn_abrir_form_manual_sidebar",
-                             use_container_width=True, type="secondary"):
-                    from modules.analysis import _dialogo_partido_manual
-                    _dialogo_partido_manual()
 
     st.markdown("<hr style='border-color:var(--borde);margin:6px 0'>", unsafe_allow_html=True)
 
@@ -937,12 +1037,12 @@ with st.sidebar:
 # ─────────────────────────────────────────────────────────────────────
 _modo_icono = "☀️" if st.session_state.get("tema_activo") == "DeOP Claro" else "🌙"
 st.markdown(
-    f'<div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;'
+    f'<div style="background:var(--bg-tarjeta);border:1px solid var(--borde);border-radius:8px;'
     f'padding:10px 18px;margin-bottom:10px;display:flex;align-items:center;'
     f'justify-content:space-between;">'
-    f'<div style="font-size:17px;font-weight:800;color:#0d3b4f;letter-spacing:.2px;">'
-    f'📊 JhonBet <span style="color:#f5a623;">Lab</span></div>'
-    f'<div style="display:flex;align-items:center;gap:16px;font-size:13px;color:#5a7a9a;">'
+    f'<div style="font-size:17px;font-weight:800;color:var(--acento-morado);letter-spacing:.2px;">'
+    f'📊 JhonBet <span style="color:var(--acento-dorado);">Lab</span></div>'
+    f'<div style="display:flex;align-items:center;gap:16px;font-size:13px;color:var(--texto-apagado);">'
     f'<span title="Estado de conexión">🟢 Conectado</span>'
     f'<span title="Ayuda">❓</span>'
     f'<span title="Idioma">🌐 ES</span>'
@@ -960,10 +1060,10 @@ _barra_stats_top()
 # ── Banner Modo Observación ──────────────────────────────────────────────────
 if st.session_state.get("modo_observacion"):
     st.markdown(
-        '<div style="background:#fff7e6;border:1px solid #f5a623;border-radius:8px;'
+        '<div style="background:var(--bg-alerta-aviso);border:1px solid var(--acento-dorado);border-radius:8px;'
         'padding:7px 14px;margin-bottom:8px;display:flex;align-items:center;gap:10px;">'
         '<span style="font-size:14px;">🔬</span>'
-        '<span style="color:#0d3b4f;font-weight:700;font-size:12px;letter-spacing:.5px;">'
+        '<span style="color:var(--acento-dorado);font-weight:700;font-size:12px;letter-spacing:.5px;">'
         'MODO OBSERVACIÓN ACTIVO — Registrando apuestas virtuales sin dinero real</span>'
         '</div>',
         unsafe_allow_html=True,
@@ -978,6 +1078,10 @@ pagina = st.session_state["pagina_activa"]
 if pagina == "Análisis de Partidos":
     from modules.match_dashboard import mostrar as mostrar_dashboard
     mostrar_dashboard()
+
+elif pagina == "Agregar Partido":
+    from modules.add_partido import mostrar as mostrar_agregar
+    mostrar_agregar()
 
 elif pagina == "Claude AI":
     from modules.claude_analysis import mostrar as mostrar_claude

@@ -270,8 +270,8 @@ def mostrar_resultados(resultados: list[dict]) -> None:
         return
 
     st.markdown(
-        f'<div style="font-size:13px;color:#aab;margin-bottom:12px;">'
-        f'<span style="color:#00e676;font-weight:700;">{len(resultados)}</span> '
+        f'<div style="font-size:13px;color:var(--texto-apagado);margin-bottom:12px;">'
+        f'<span style="color:#16a34a;font-weight:700;">{len(resultados)}</span> '
         f'apuesta(s) con valor detectado (edge &gt; {UMBRAL_EDGE:.0f}%)</div>',
         unsafe_allow_html=True,
     )
@@ -285,11 +285,13 @@ def mostrar_resultados(resultados: list[dict]) -> None:
     n_odds = sum(1 for r in resultados if r.get("Fuente") == "OddsAPI")
     n_espn = len(resultados) - n_odds
 
-    resumen = f'<span style="color:#00aa44;font-weight:700;">{n_odds}</span> con edge real'
+    resumen = f'<span style="color:#16a34a;font-weight:700;">{n_odds}</span> con edge real'
     if n_espn:
-        resumen += f' · <span style="color:#4499ff;">{n_espn}</span> ESPN (sin cuotas)'
-    st.markdown(f'<div style="font-size:12px;margin-bottom:8px;">{resumen}</div>',
-                unsafe_allow_html=True)
+        resumen += f' · <span style="color:var(--acento-azul);">{n_espn}</span> ESPN (sin cuotas)'
+    st.markdown(
+        f'<div style="font-size:12px;color:var(--texto-apagado);margin-bottom:8px;">{resumen}</div>',
+        unsafe_allow_html=True,
+    )
 
     filas_html = ""
     for r in resultados:
@@ -299,11 +301,12 @@ def mostrar_resultados(resultados: list[dict]) -> None:
         fuente   = r.get("Fuente", "OddsAPI")
 
         if fuente == "ESPN":
-            color_edge  = "#4499ff"
-            cuota_txt   = "Sin cuota"
-            edge_txt    = "ESPN"
+            color_edge = "var(--acento-azul)"
+            cuota_txt  = "Sin cuota"
+            edge_txt   = "ESPN"
         else:
-            color_edge = "#00aa44" if edge >= 15 else ("#f39c12" if edge >= 10 else "#4fc3f7")
+            # Verde para edge alto, naranja para medio, azul-petróleo para bajo
+            color_edge = "#16a34a" if edge >= 15 else ("#f39c12" if edge >= 10 else "var(--acento-azul)")
             cuota_txt  = f"{cuota:.2f}"
             edge_txt   = f"+{edge:.1f}%"
 
@@ -311,15 +314,19 @@ def mostrar_resultados(resultados: list[dict]) -> None:
         equipos = r["Partido"].split(" vs ", 1)
         logo_l  = _logo(equipos[0].strip(), 18) if len(equipos) > 0 else ""
         logo_v  = _logo(equipos[1].strip(), 18) if len(equipos) > 1 else ""
-        partido_html = f"{logo_l}{equipos[0]} <span style='color:#aab;'>vs</span> {logo_v}{equipos[1]}" if len(equipos) > 1 else r["Partido"]
+        partido_html = (
+            f"{logo_l}{equipos[0]} "
+            f"<span style='color:var(--texto-apagado);'>vs</span> "
+            f"{logo_v}{equipos[1]}"
+        ) if len(equipos) > 1 else r["Partido"]
 
         filas_html += (
             f"<tr>"
-            f"<td style='text-align:left;color:#ffffff;'>{partido_html}</td>"
-            f"<td style='color:#aab;font-size:11px;'>{r['Liga']}</td>"
-            f"<td style='color:#ffffff;font-weight:600;'>{r['Mercado']}</td>"
-            f"<td style='color:#4499ff;'>{prob_pct:.1f}%</td>"
-            f"<td style='color:#ffd700;font-weight:700;'>{cuota_txt}</td>"
+            f"<td style='text-align:left;color:var(--texto);'>{partido_html}</td>"
+            f"<td style='color:var(--texto-apagado);font-size:11px;'>{r['Liga']}</td>"
+            f"<td style='color:var(--texto);font-weight:600;'>{r['Mercado']}</td>"
+            f"<td style='color:var(--acento-azul);'>{prob_pct:.1f}%</td>"
+            f"<td style='color:var(--acento-dorado);font-weight:700;'>{cuota_txt}</td>"
             f"<td style='color:{color_edge};font-weight:700;'>{edge_txt}</td>"
             f"</tr>"
         )

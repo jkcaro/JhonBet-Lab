@@ -1,21 +1,25 @@
 """Módulo: Página principal "Análisis de Partidos" — layout estilo DeOP Connect.
 
 Solo presentación: selecciona el partido (reutiliza modules.analysis tal cual)
-y dispara los 4 análisis de Claude ya existentes por mercado
-(modules.claude_analysis.analizar_4_mercados), sin tocar ninguna fórmula de
-cálculo. Las 4 tarjetas, los 3 gauges, el cuadro de info y la tabla de
-historial solo presentan datos ya calculados.
+y calcula los 4 semáforos matemáticamente (Poisson + edge vs cuotas reales),
+reutilizando sin modificar las funciones de enriquecimiento/puntuación ya
+existentes en modules.claude_analysis — sin llamar a la API de Claude. Las 4
+tarjetas, los 3 gauges, el cuadro de info y la tabla de historial solo
+presentan datos ya calculados. El análisis profundo con Claude (por mercado
+individual, con forma reciente) sigue disponible en la página "Claude AI".
 """
 
+import copy
+
 import streamlit as st
-import anthropic
 
 from modules import analysis as _analysis_mod
 from modules import claude_analysis as _ca
 from modules import claude_history as _history_mod
 from modules.scada_charts import (
     gauge_donut_gris, tarjeta_veredicto_html, panel_info_partido_html,
-    tabla_ultimos_analisis_html, semaforo_html, DEOP_DORADO, DEOP_PETROLEO, DEOP_VERDE,
+    tabla_ultimos_analisis_html, semaforo_html, DEOP_PETROLEO, DEOP_VERDE,
+    _paleta_activa,
 )
 
 _CONF_NUM = {"Alto": 85.0, "Medio": 50.0, "Bajo": 18.0}
@@ -53,6 +57,39 @@ def _tarjeta_de(mercado: str, resultado: dict) -> str:
     return tarjeta_veredicto_html(titulo, valor, estado)
 
 
+def _calcular_4_mercados(datos: dict) -> dict:
+    """
+    Calcula los 4 semáforos de MERCADOS_DASHBOARD de forma puramente
+    matemática (Poisson + edge vs cuotas reales de odds.csv), sin llamar a
+    la API de Claude. Reutiliza sin modificar el mismo pipeline de
+    enriquecimiento/puntuación que usa modules.claude_analysis.analizar_4_mercados
+    (_enriquecer_con_cuotas, _enriquecer_con_stats, _enriquecer_con_alertas,
+    _enriquecer_para_mercado, _calcular_puntuacion). _calcular_poisson_local
+    no se llama por separado: _enriquecer_para_mercado ya la invoca
+    internamente para Victoria 1X2, Menos 1.5 y Más 1.5.
+
+    _calcular_puntuacion() recibe "" como texto de Claude — solo se usa como
+    fallback para extraer el edge por regex cuando edge_por_outcome viene
+    vacío; con "" ese fallback simplemente no encuentra nada (edge 0.0),
+    igual que si Claude no hubiera devuelto un veredicto parseable.
+
+    Devuelve {mercado: {"texto": "", "datos": dict, "puntuacion": dict}} —
+    mismo formato que analizar_4_mercados(), sin el campo "texto" real.
+    """
+    base = copy.deepcopy(datos)
+    base = _ca._enriquecer_con_cuotas(base)
+    base = _ca._enriquecer_con_stats(base)
+    base = _ca._enriquecer_con_alertas(base)
+
+    resultados: dict = {}
+    for mercado in _ca.MERCADOS_DASHBOARD:
+        datos_m = _ca._enriquecer_para_mercado(copy.deepcopy(base), mercado)
+        datos_m["mercado"] = mercado
+        punt_m = _ca._calcular_puntuacion("", datos_m)
+        resultados[mercado] = {"texto": "", "datos": datos_m, "puntuacion": punt_m}
+    return resultados
+
+
 def mostrar() -> None:
     """Renderiza la página 'Análisis de Partidos' con el layout DeOP Connect."""
 
@@ -72,15 +109,15 @@ def mostrar() -> None:
     padding-bottom: 0 !important;
 }
 
-/* Selectbox Liga / Partido */
+/* Selectbox Liga / Partido — ~28px (reducido desde 36px) */
 .st-key-expander_seleccionar_partido [data-testid="stSelectbox"] [data-baseweb="select"] > div {
-    min-height: 36px !important;
-    max-height: 36px !important;
+    min-height: 28px !important;
+    max-height: 28px !important;
     padding-top: 0 !important;
     padding-bottom: 0 !important;
 }
 .st-key-expander_seleccionar_partido [data-testid="stSelectbox"] [data-baseweb="select"] > div > div {
-    padding: 2px 8px !important;
+    padding: 1px 8px !important;
 }
 
 /* Botón "Analizar Partido" */
@@ -145,71 +182,41 @@ def mostrar() -> None:
             )
         return
 
-    # ── Banner petróleo: partido activo ────────────────────────────────────────
+    # ── Banner: partido activo ───────────────────────────────────────────────
+    # El fondo se mantiene en petróleo oscuro literal (rol de "barra de
+    # cabecera oscura", no de acento de marca) — en Codere "petroleo" es
+    # verde brillante, así que usarlo como fondo aquí se vería como una
+    # barra verde sólida en vez de una cabecera oscura. El texto "PARTIDO EN
+    # ANÁLISIS" sí sigue el acento dorado/verde de la paleta activa.
+    paleta = _paleta_activa()
     st.markdown(
         f'<div style="background:{DEOP_PETROLEO};border-radius:8px;'
         f'padding:10px 18px;margin-bottom:10px;display:flex;align-items:center;'
         f'justify-content:space-between;">'
         f'<span style="color:#ffffff;font-size:15px;font-weight:800;'
         f'letter-spacing:.3px;">⚽ {partido}</span>'
-        f'<span style="color:{DEOP_DORADO};font-size:11px;font-weight:700;'
+        f'<span style="color:{paleta["dorado"]};font-size:11px;font-weight:700;'
         f'text-transform:uppercase;letter-spacing:1px;">Partido en análisis</span>'
         f'</div>',
         unsafe_allow_html=True,
     )
 
-    # ── Forma reciente + botón único de análisis ───────────────────────────────
-    col_fl, col_fv = st.columns(2)
-    with col_fl:
-        forma_local = st.text_input(
-            "Forma reciente local (últimos 5)*",
-            placeholder="Ej: W,W,D,L,W", key="dash_forma_local",
-        )
-    with col_fv:
-        forma_visit = st.text_input(
-            "Forma reciente visitante (últimos 5)*",
-            placeholder="Ej: L,D,W,W,L", key="dash_forma_visit",
-        )
-    # Se guardan en `datos` siempre (no solo al pulsar Analizar) para que el
-    # cuadro de info del partido los muestre incluso antes/después del rerun.
-    datos["forma_reciente_local"]     = forma_local.strip()
-    datos["forma_reciente_visitante"] = forma_visit.strip()
-
-    _forma_completa = bool(forma_local.strip()) and bool(forma_visit.strip())
-    if not _forma_completa:
-        st.caption("⚠️ Completa la forma reciente de ambos equipos para habilitar el análisis.")
-
-    if st.button("🤖 Analizar con Claude AI (4 mercados)", key="btn_analizar_dashboard",
-                 use_container_width=True, disabled=not _forma_completa):
-        _status = st.empty()
-        _ok = False
-        with st.spinner("Analizando 4 mercados con Claude AI…"):
-            try:
-                _status.caption("⏳ Analizando 4 mercados (Victoria 1X2, Ambos Marcan, Más/Menos 1.5)…")
-                resultados = _ca.analizar_4_mercados(datos)
-                st.session_state["match_dashboard_resultados"] = resultados
-                st.session_state["match_dashboard_partido"]    = partido
-                for mercado, r in resultados.items():
-                    try:
-                        _ca._guardar_historial_claude(r["datos"], r["puntuacion"], r["texto"])
-                    except Exception as _e_hist:
-                        st.warning(f"⚠️ No se pudo guardar historial de '{mercado}': {_e_hist}")
-                _ok = True
-                _status.empty()
-            except anthropic.AuthenticationError:
-                _status.empty()
-                st.error("API key inválida. Verifica ANTHROPIC_API_KEY.")
-            except Exception as exc:
-                _status.empty()
-                st.error(f"Error en el análisis: {exc}")
-        if _ok:
+    # ── Botón único de análisis (cálculo matemático, sin Claude) ────────────────
+    if st.button("Analizar Partido (4 mercados)", key="btn_analizar_dashboard",
+                 use_container_width=True):
+        try:
+            resultados = _calcular_4_mercados(datos)
+            st.session_state["match_dashboard_resultados"] = resultados
+            st.session_state["match_dashboard_partido"]    = partido
             st.rerun()
+        except Exception as exc:
+            st.error(f"Error al calcular el análisis: {exc}")
 
     resultados = st.session_state.get("match_dashboard_resultados")
     partido_analizado = st.session_state.get("match_dashboard_partido")
 
     if not resultados or partido_analizado != partido:
-        st.caption("Pulsa **Analizar con Claude AI** para generar los 4 veredictos de este partido.")
+        st.caption("Pulsa **Analizar Partido (4 mercados)** para generar los 4 veredictos de este partido.")
         return
 
     # ── 4 tarjetas amarillas + semáforo circular de cada mercado ────────────────
@@ -236,10 +243,10 @@ def mostrar() -> None:
 
     cols_gauges = st.columns(3)
     with cols_gauges[0]:
-        st.plotly_chart(gauge_donut_gris(max(0.0, edge_max), "Edge %", DEOP_DORADO),
+        st.plotly_chart(gauge_donut_gris(max(0.0, edge_max), "Edge %", paleta["dorado"]),
                         use_container_width=True, config={"displayModeBar": False}, key="dash_gauge_edge")
     with cols_gauges[1]:
-        st.plotly_chart(gauge_donut_gris(confianza_pct, "Confianza %", DEOP_PETROLEO),
+        st.plotly_chart(gauge_donut_gris(confianza_pct, "Confianza %", paleta["petroleo"]),
                         use_container_width=True, config={"displayModeBar": False}, key="dash_gauge_conf")
     with cols_gauges[2]:
         st.plotly_chart(gauge_donut_gris(p_victoria, "P(Victoria) %", DEOP_VERDE),

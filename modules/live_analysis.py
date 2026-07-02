@@ -3,10 +3,12 @@ Módulo: Análisis en Vivo — estadísticas en tiempo real + Claude AI.
 Dashboard SCADA industrial adaptable a cualquier partido y equipo.
 """
 
+import base64
 import json
 import os
 import re
 import streamlit as st
+import streamlit.components.v1 as components
 import anthropic
 from dotenv import load_dotenv
 
@@ -26,22 +28,22 @@ MERCADOS_VIVO = [
     "Resultado al descanso",
 ]
 
-# ── Paleta SCADA ──────────────────────────────────────────────────────────────
-_PANEL  = "#080c14"
-_BORDER = "#1a2540"
-_GREEN  = "#00ff88"
+# ── Paleta DeOP Connect (claro) ────────────────────────────────────────────────
+_PANEL  = "#ffffff"
+_BORDER = "#e2e8f0"
+_GREEN  = "#16a34a"
 _YELLOW = "#f5a623"
-_RED    = "#ff4444"
-_GRAY   = "#1e2d45"
+_RED    = "#dc2626"
+_GRAY   = "#e8ecef"
 _TEXT   = "#5a7a9a"
-_LIGHT  = "#8eb0cc"
-_GOLD   = "#ffd700"
-_BLUE   = "#4499ff"
-_FONT   = "Courier New, monospace"
+_LIGHT  = "#1a2c38"
+_GOLD   = "#f5a623"
+_BLUE   = "#0d3b4f"
+_FONT   = "Inter, sans-serif"
 
 _CSS_VIVO = """
 <style>
-/* ── SCADA Vivo: grid responsivo ── */
+/* ── DeOP Vivo: grid responsivo ── */
 .scada-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -49,20 +51,21 @@ _CSS_VIVO = """
     margin-bottom: 8px;
 }
 .scada-panel {
-    background: #080c14;
-    border: 1px solid #1a2540;
-    border-radius: 6px;
+    background: var(--bg-tarjeta);
+    border: 1px solid var(--borde);
+    border-radius: 8px;
     padding: 10px 12px;
-    font-family: 'Courier New', monospace;
+    font-family: 'Inter', sans-serif;
 }
 .scada-titulo {
-    font-size: 9px;
-    color: #5a7a9a;
-    letter-spacing: 2px;
+    font-size: 10px;
+    color: var(--acento-morado);
+    font-weight: 800;
+    letter-spacing: 1px;
     text-transform: uppercase;
     margin-bottom: 8px;
     padding-bottom: 5px;
-    border-bottom: 1px solid #1a2540;
+    border-bottom: 2px solid var(--acento-dorado);
 }
 .scada-stat-row {
     display: grid;
@@ -76,8 +79,171 @@ _CSS_VIVO = """
     .scada-grid { grid-template-columns: 1fr; }
     .scada-stat-row { grid-template-columns: 1fr 60px 1fr; font-size: 9px; }
 }
+/* Labels legibles sobre fondo claro (widgets nativos de Streamlit) */
+[data-testid="stWidgetLabel"] p {
+    color: var(--acento-morado) !important;
+    font-weight: 600 !important;
+}
+
+/* Inputs numéricos (Minuto, Goles, Posesión, Ataques...) y de texto
+   (Partido) — fondo/borde según el tema activo, en vez del fondo oscuro
+   por defecto del tema base de Streamlit. */
+.stNumberInput input[data-testid="stNumberInputField"],
+.stTextInput input {
+    background-color: var(--bg-tarjeta) !important;
+    border: 1px solid var(--acento-morado) !important;
+    color: var(--acento-morado) !important;
+}
+.stNumberInput input[data-testid="stNumberInputField"]:focus,
+.stTextInput input:focus {
+    border-color: var(--acento-dorado) !important;
+    box-shadow: 0 0 0 1px #f5a62333 !important;
+}
+.stNumberInput input::placeholder,
+.stTextInput input::placeholder {
+    color: var(--texto-apagado) !important;
+    opacity: 1 !important;
+}
+
+/* Botones +/- del number_input — control de "chrome" siempre oscuro con
+   ícono blanco (mismo rol que los banners petróleo de otras páginas: no
+   seguimos el acento de marca aquí para no perder contraste en Codere,
+   donde dorado/petroleo son ambos verde). */
+.stNumberInput button,
+button[data-testid="stNumberInputStepUp"],
+button[data-testid="stNumberInputStepDown"] {
+    background-color: #0d3b4f !important;
+    border: 1px solid #0d3b4f !important;
+    color: #ffffff !important;
+}
+.stNumberInput button svg,
+button[data-testid="stNumberInputStepUp"] svg,
+button[data-testid="stNumberInputStepDown"] svg {
+    fill: #ffffff !important;
+}
 </style>
 """
+
+
+# ── Cancha visual ─────────────────────────────────────────────────────────────
+
+@st.cache_data
+def _cancha_b64() -> str:
+    """Lee assets/cancha.png y devuelve su contenido en base64 (cacheado)."""
+    from pathlib import Path
+    ruta = Path(__file__).parent.parent / "assets" / "cancha.png"
+    if not ruta.exists():
+        return ""
+    try:
+        return base64.b64encode(ruta.read_bytes()).decode()
+    except Exception:
+        return ""
+
+
+def _panel_cancha_html(
+    nombre_l: str, nombre_v: str,
+    goles_l: int, goles_v: int,
+    pos_l: int, pos_v: int,
+    tiro_l: int, tiro_v: int,
+    b64: str,
+) -> str:
+    """HTML completo del panel de cancha con overlays CSS (para components.html)."""
+    if not b64:
+        return ""
+
+    pos_total = pos_l + pos_v
+    if pos_total == 0:
+        pos_l_pct, pos_v_pct = 50, 50
+    else:
+        pos_l_pct = round(pos_l / pos_total * 100)
+        pos_v_pct = 100 - pos_l_pct
+
+    nl = nombre_l[:13]
+    nv = nombre_v[:13]
+
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{background:transparent;overflow:hidden}}
+.wrap{{
+    position:relative;width:400px;max-width:100%;height:250px;
+    border-radius:10px;overflow:hidden;font-family:Inter,sans-serif;
+}}
+.bg{{
+    position:absolute;inset:0;
+    background-image:url('data:image/png;base64,{b64}');
+    background-size:cover;background-position:center;
+}}
+.dim{{position:absolute;inset:0;background:rgba(0,0,0,.20)}}
+.score{{
+    position:absolute;top:10px;left:50%;transform:translateX(-50%);
+    background:rgba(0,0,0,.72);border-radius:8px;padding:4px 16px;
+    color:#fff;font-size:20px;font-weight:900;letter-spacing:2px;white-space:nowrap;
+}}
+.local{{
+    position:absolute;left:14px;top:50%;transform:translateY(-50%);text-align:center;
+}}
+.visit{{
+    position:absolute;right:14px;top:50%;transform:translateY(-50%);text-align:center;
+}}
+.circ-l,.circ-v{{
+    width:52px;height:52px;border-radius:50%;
+    border:3px solid rgba(255,255,255,.6);
+    display:flex;align-items:center;justify-content:center;
+    font-size:22px;font-weight:900;color:#fff;margin:0 auto;
+}}
+.circ-l{{background:#16a34a;box-shadow:0 0 14px rgba(22,163,74,.65)}}
+.circ-v{{background:#dc2626;box-shadow:0 0 14px rgba(220,38,38,.65)}}
+.tnm{{
+    color:#fff;font-size:10px;font-weight:700;
+    text-shadow:0 1px 3px rgba(0,0,0,.9);margin-top:5px;
+    max-width:76px;line-height:1.2;
+}}
+.lbl{{
+    position:absolute;top:10px;
+    color:#fff;font-size:9px;font-weight:700;
+    letter-spacing:.8px;text-transform:uppercase;
+    text-shadow:0 1px 3px rgba(0,0,0,.9);opacity:.85;
+}}
+.lbl-l{{left:14px}}.lbl-v{{right:14px}}
+.pos-bar{{position:absolute;bottom:0;left:0;right:0;height:26px;display:flex}}
+.pos-l{{
+    width:{pos_l_pct}%;background:rgba(22,163,74,.80);
+    display:flex;align-items:center;justify-content:center;
+    font-size:11px;font-weight:800;color:#fff;
+}}
+.pos-v{{
+    width:{pos_v_pct}%;background:rgba(37,99,235,.80);
+    display:flex;align-items:center;justify-content:center;
+    font-size:11px;font-weight:800;color:#fff;
+}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bg"></div>
+  <div class="dim"></div>
+  <div class="lbl lbl-l">Tiros</div>
+  <div class="lbl lbl-v">Tiros</div>
+  <div class="score">{goles_l} &mdash; {goles_v}</div>
+  <div class="local">
+    <div class="circ-l">{tiro_l}</div>
+    <div class="tnm">{nl}</div>
+  </div>
+  <div class="visit">
+    <div class="circ-v">{tiro_v}</div>
+    <div class="tnm">{nv}</div>
+  </div>
+  <div class="pos-bar">
+    <div class="pos-l">{pos_l_pct}%</div>
+    <div class="pos-v">{pos_v_pct}%</div>
+  </div>
+</div>
+</body>
+</html>"""
 
 
 # ── Cálculos ──────────────────────────────────────────────────────────────────
@@ -146,7 +312,7 @@ def _panel_marcador(nombre_l: str, nombre_v: str,
         f'<div style="font-size:10px;color:{_GOLD};letter-spacing:1px;'
         f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
         f'{nombre_l[:14]}</div>'
-        f'<div style="font-size:30px;font-weight:900;color:#fff;line-height:1;">'
+        f'<div style="font-size:30px;font-weight:900;color:#0d3b4f;line-height:1;">'
         f'{goles_l}</div>'
         f'</div>'
         # Separador
@@ -156,7 +322,7 @@ def _panel_marcador(nombre_l: str, nombre_v: str,
         f'<div style="font-size:10px;color:{_BLUE};letter-spacing:1px;'
         f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
         f'{nombre_v[:14]}</div>'
-        f'<div style="font-size:30px;font-weight:900;color:#fff;line-height:1;">'
+        f'<div style="font-size:30px;font-weight:900;color:#0d3b4f;line-height:1;">'
         f'{goles_v}</div>'
         f'</div>'
         f'</div>'
@@ -166,38 +332,31 @@ def _panel_marcador(nombre_l: str, nombre_v: str,
     )
 
 
-def _semaforo_vivo(decision: str) -> str:
-    """Semáforo SCADA basado en la decisión detectada en el texto de Claude."""
-    if decision == "apostar":
-        estado, col = "APOSTAR", _GREEN
-        r = "#150404"; a = "#141200"; g = _GREEN
-        gr = ga = "none"; gg = f"0 0 10px {_GREEN}, 0 0 20px {_GREEN}44"
-    elif decision == "esperar":
-        estado, col = "ESPERAR", _YELLOW
-        r = "#150404"; a = _YELLOW; g = "#021209"
-        gr = "none"; ga = f"0 0 10px {_YELLOW}, 0 0 20px {_YELLOW}44"; gg = "none"
-    else:
-        estado, col = "NO APOSTAR", _RED
-        r = _RED; a = "#141200"; g = "#021209"
-        gr = f"0 0 10px {_RED}, 0 0 20px {_RED}44"; ga = gg = "none"
+_MAPA_DECISION_ESTADO = {
+    "apostar":    "APOSTAR",
+    "esperar":    "PRECAUCIÓN",
+    "no_apostar": "NO APOSTAR",
+}
 
-    circ = (
-        f'<div style="width:20px;height:20px;border-radius:50%;background:{r};'
-        f'box-shadow:{gr};border:1px solid {_BORDER};"></div>'
-        f'<div style="width:3px;height:7px;background:{_BORDER};"></div>'
-        f'<div style="width:20px;height:20px;border-radius:50%;background:{a};'
-        f'box-shadow:{ga};border:1px solid {_BORDER};"></div>'
-        f'<div style="width:3px;height:7px;background:{_BORDER};"></div>'
-        f'<div style="width:20px;height:20px;border-radius:50%;background:{g};'
-        f'box-shadow:{gg};border:1px solid {_BORDER};"></div>'
-    )
+
+def _semaforo_vivo(decision: str) -> str:
+    """
+    Semáforo estilo DeOP Connect — reutiliza semaforo_mini_html() de
+    scada_charts.py, envuelto en card blanca. Solo mapea el vocabulario de
+    _detectar_decision() ("apostar"/"esperar"/"no_apostar") al vocabulario
+    de estado ("APOSTAR"/"PRECAUCIÓN"/"NO APOSTAR") que espera el helper —
+    no modifica _detectar_decision() ni su lógica.
+    """
+    from modules.scada_charts import semaforo_mini_html
+
+    estado = _MAPA_DECISION_ESTADO.get(decision, "NO APOSTAR")
+    col    = {"APOSTAR": _GREEN, "PRECAUCIÓN": _YELLOW, "NO APOSTAR": _RED}[estado]
+
     return (
         f'<div class="scada-panel" style="display:flex;flex-direction:column;'
         f'align-items:center;justify-content:center;min-height:140px;">'
         f'<div class="scada-titulo" style="text-align:center;">◈ SEMÁFORO</div>'
-        f'<div style="display:flex;flex-direction:column;align-items:center;gap:3px;">'
-        f'{circ}'
-        f'</div>'
+        f'{semaforo_mini_html(estado)}'
         f'<div style="font-size:10px;font-weight:700;color:{col};'
         f'letter-spacing:1px;margin-top:8px;">{estado}</div>'
         f'</div>'
@@ -205,9 +364,18 @@ def _semaforo_vivo(decision: str) -> str:
 
 
 def _panel_momentum(momentum: float, nombre_l: str, nombre_v: str) -> str:
-    """Barra de momentum -10→+10 con indicador dinámico."""
+    """
+    Barra de momentum -10→+10 con indicador dinámico — misma visualización
+    direccional de siempre, recoloreada a DeOP claro: barra hacia Local en
+    azul petróleo, barra hacia Visitante en rojo/naranja, texto del equipo
+    dominante en dorado, panel blanco con borde petróleo.
+    """
+    _COL_LOCAL = "#0d3b4f"
+    _COL_VISIT = "#e74c3c"
+    _COL_DOMINANTE = "#f5a623"
+
     pct_pos   = ((momentum + 10) / 20) * 100      # 0-100 en la barra CSS
-    col_bar   = _GREEN if momentum > 0 else (_RED if momentum < 0 else _GRAY)
+    col_bar   = _COL_LOCAL if momentum > 0 else (_COL_VISIT if momentum < 0 else _GRAY)
     dominante = nombre_l if momentum > 0 else (nombre_v if momentum < 0 else "Equilibrado")
     abs_m     = abs(momentum)
 
@@ -225,7 +393,7 @@ def _panel_momentum(momentum: float, nombre_l: str, nombre_v: str) -> str:
     indicator_left = f"{pct_pos:.1f}%"
 
     return (
-        f'<div class="scada-panel">'
+        f'<div class="scada-panel" style="border-color:#0d3b4f;">'
         f'<div class="scada-titulo">◈ MOMENTUM  '
         f'<span style="color:{col_bar};font-weight:700;">{momentum:+.1f}</span>'
         f' / 10</div>'
@@ -236,18 +404,18 @@ def _panel_momentum(momentum: float, nombre_l: str, nombre_v: str) -> str:
         f'<span>Equilibrado</span>'
         f'<span>{nombre_l[:12]}</span>'
         f'</div>'
-        f'<div style="width:100%;height:16px;background:{_GRAY};border-radius:3px;'
+        f'<div style="width:100%;height:16px;background:#e8ecef;border-radius:3px;'
         f'border:1px solid {_BORDER};overflow:hidden;position:relative;">'
         f'<div style="position:absolute;top:0;height:100%;'
         f'left:{fill_left};width:{fill_width};'
-        f'background:{col_bar};opacity:.8;"></div>'
+        f'background:{col_bar};opacity:.9;"></div>'
         f'<div style="position:absolute;top:0;left:50%;width:2px;height:100%;'
         f'background:{_BORDER};"></div>'
         f'<div style="position:absolute;top:1px;left:{indicator_left};'
         f'width:4px;height:14px;background:{col_bar};border-radius:2px;'
-        f'transform:translateX(-50%);box-shadow:0 0 6px {col_bar}88;"></div>'
+        f'transform:translateX(-50%);box-shadow:0 0 4px {col_bar}88;"></div>'
         f'</div>'
-        f'<div style="font-size:9px;color:{col_bar};text-align:center;margin-top:4px;'
+        f'<div style="font-size:9px;color:{_COL_DOMINANTE};text-align:center;margin-top:4px;'
         f'font-weight:700;">{dominante} · {abs_m:.1f} pts</div>'
         f'</div>'
         f'</div>'
@@ -358,8 +526,6 @@ def _dashboard_scada(texto_claude: str, stats: dict,
     momentum = _calcular_momentum(pos_l, pos_v, atq_l, atq_v, tiro_l, tiro_v)
     decision = _detectar_decision(texto_claude)
 
-    st.markdown(_CSS_VIVO, unsafe_allow_html=True)
-
     # ── Fila 1: Marcador + Semáforo ──────────────────────────────────────────
     st.markdown(
         f'<div class="scada-grid">'
@@ -450,6 +616,13 @@ def _fila_stat(label: str, key_l: str, key_v: str,
 
 def mostrar() -> None:
     """Renderiza el módulo completo de Análisis en Vivo."""
+    from modules.scada_charts import panel_info_partido_html
+    from modules.claude_analysis import _datos_desde_sesion as _datos_previa_sesion
+
+    # CSS inyectado desde el inicio (no solo tras analizar) para que los
+    # labels nativos ("Partido", "Mercado in-play:", "Minuto", etc.) sean
+    # legibles también en el formulario, antes de tener resultados.
+    st.markdown(_CSS_VIVO, unsafe_allow_html=True)
 
     # ── Partido activo ────────────────────────────────────────────────────────
     partido = st.session_state.get("partido_activo", "")
@@ -457,12 +630,17 @@ def mostrar() -> None:
 
     if partido:
         st.markdown(
-            f'<div style="font-size:13px;color:var(--texto-apagado);margin-bottom:10px;">'
-            f'Partido cargado: <span style="color:var(--texto);font-weight:700;">'
+            f'<div style="font-size:13px;color:#5a7a9a;margin-bottom:10px;">'
+            f'Partido cargado: <span style="color:#0d3b4f;font-weight:700;">'
             f'{partido}</span>'
-            f'&nbsp;·&nbsp;<span style="color:var(--acento-azul);">{liga}</span></div>',
+            f'&nbsp;·&nbsp;<span style="color:#0d3b4f;">{liga}</span></div>',
             unsafe_allow_html=True,
         )
+
+        _datos_previa = _datos_previa_sesion()
+        if _datos_previa:
+            with st.expander("🔍 Ver datos del partido", expanded=False):
+                st.markdown(panel_info_partido_html(_datos_previa), unsafe_allow_html=True)
     else:
         st.info("Selecciona y analiza un partido primero. "
                 "También puedes introducir el nombre manualmente.")
@@ -527,10 +705,26 @@ def mostrar() -> None:
     tiro_l, tiro_v = _fila_stat("Tiros a puerta",     "vivo_tp_l",   "vivo_tp_v",    30, 1)
     fal_l,  fal_v  = _fila_stat("Faltas",             "vivo_fal_l",  "vivo_fal_v",   30, 1)
 
-    # ── Botón ─────────────────────────────────────────────────────────────────
+    # ── Botón + panel cancha ─────────────────────────────────────────────────
     st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-    analizar = st.button("⚡ Analizar en vivo con Claude AI",
-                         key="btn_vivo", use_container_width=True)
+    col_form_bot, col_cancha_panel = st.columns([1.15, 1])
+    with col_form_bot:
+        analizar = st.button("⚡ Analizar en vivo con Claude AI",
+                             key="btn_vivo", use_container_width=True)
+    with col_cancha_panel:
+        _b64 = _cancha_b64()
+        if _b64:
+            components.html(
+                _panel_cancha_html(
+                    nombre_l, nombre_v,
+                    int(goles_l), int(goles_v),
+                    int(pos_l), int(pos_v),
+                    int(tiro_l), int(tiro_v),
+                    _b64,
+                ),
+                height=265,
+                scrolling=False,
+            )
 
     # ── Lógica de análisis ────────────────────────────────────────────────────
     if analizar:
