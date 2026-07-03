@@ -80,6 +80,49 @@ def _guardar_tema() -> None:
 
 _RUTA_PARTIDOS = Path(__file__).parent / "data" / "matches.csv"
 _RUTA_CUOTAS   = Path(__file__).parent / "data" / "odds.csv"
+_RUTA_ESTADO   = Path(__file__).parent / "data" / "estado_sesion.json"
+
+_CLAVES_SESION = [
+    "pagina_activa", "liga_activa", "partido_activo",
+    "analisis_listo", "claude_analisis",
+    "tema_activo", "modo_observacion", "saldo",
+    "fuente_xg_activa", "fuente_odds", "fuente_espn", "fuente_logos",
+]
+
+
+def _cargar_estado_sesion() -> None:
+    if not _RUTA_ESTADO.exists():
+        return
+    try:
+        import json as _json
+        with open(_RUTA_ESTADO, "r", encoding="utf-8") as _f:
+            _datos = _json.load(_f)
+        for _k, _v in _datos.items():
+            if _k not in st.session_state:
+                st.session_state[_k] = _v
+    except Exception:
+        pass
+
+
+def _guardar_estado_sesion() -> None:
+    try:
+        import json as _json
+        _datos = {k: st.session_state[k] for k in _CLAVES_SESION if k in st.session_state}
+        _RUTA_ESTADO.parent.mkdir(parents=True, exist_ok=True)
+        with open(_RUTA_ESTADO, "w", encoding="utf-8") as _f:
+            _json.dump(_datos, _f, ensure_ascii=False, default=str)
+    except Exception:
+        pass
+
+
+def _limpiar_estado_sesion() -> None:
+    try:
+        if _RUTA_ESTADO.exists():
+            _RUTA_ESTADO.unlink()
+    except Exception:
+        pass
+    for _k in _CLAVES_SESION:
+        st.session_state.pop(_k, None)
 
 
 def _limpiar_partidos_viejos() -> None:
@@ -239,11 +282,30 @@ def _kpi_cards_virtual() -> None:
     serie_acum: list = []
     serie_acum_30: list = []
 
-    try:
+    def _cargar_df_virtual() -> "pd.DataFrame":
+        """Carga virtual_bets.csv; si está vacío usa history.csv mapeando columnas."""
         df = pd.read_csv(_RUTA_VB)
+        if df.empty or len(df) == 0:
+            raise ValueError("vacío")
         df["pl_virtual"]    = pd.to_numeric(df["pl_virtual"],    errors="coerce").fillna(0)
         df["stake_virtual"] = pd.to_numeric(df["stake_virtual"], errors="coerce").fillna(0)
         df["fecha"]         = pd.to_datetime(df["fecha"],        errors="coerce")
+        return df
+
+    def _cargar_df_history() -> "pd.DataFrame":
+        """Fallback: lee history.csv mapeando 'ganancia' → 'pl_virtual'."""
+        df = pd.read_csv(_RUTA_HISTORIAL)
+        df = df.rename(columns={"ganancia": "pl_virtual"})
+        df["pl_virtual"]    = pd.to_numeric(df["pl_virtual"],    errors="coerce").fillna(0)
+        df["stake_virtual"] = df["pl_virtual"].abs()   # proxy: stake ≈ |ganancia|
+        df["fecha"]         = pd.to_datetime(df["fecha"], errors="coerce", dayfirst=True)
+        return df
+
+    try:
+        try:
+            df = _cargar_df_virtual()
+        except Exception:
+            df = _cargar_df_history()
 
         total    = len(df)
         ganadas  = int((df["resultado"] == "Ganado").sum())
@@ -664,11 +726,20 @@ section[data-testid="stMain"]{{padding:0!important;}}
                 pass
 
             if _login_ok:
-                st.session_state["authentication_status"] = True
-                st.session_state["nombre_usuario"]        = st.secrets["auth"].get("name", "Jhon")
-                if _li_remember and _authenticator is not None:
+                # Claves que stauth 0.4.x espera en session_state
+                st.session_state['authentication_status'] = True
+                st.session_state['username']              = st.secrets["auth"]["username"]
+                st.session_state['name']                  = st.secrets["auth"]["name"]
+                st.session_state['email']                 = st.secrets["auth"]["email"]
+                st.session_state['roles']                 = None
+                st.session_state['logout']                = None
+                # Persistir cookie — siempre si hay authenticator
+                # "Recordarme" controla expiry: 30 días vs sólo la sesión actual
+                if _authenticator is not None:
                     try:
-                        _authenticator.cookie_handler.set_cookie()
+                        if not _li_remember:
+                            _authenticator.cookie_controller.cookie_model.cookie_expiry_days = 0
+                        _authenticator.cookie_controller.set_cookie()
                     except Exception:
                         pass
                 st.rerun()
@@ -696,7 +767,9 @@ st.set_page_config(
 )
 
 # ─── Puerta de autenticación ───────────────────────────────────────────────────
-# Inicializa streamlit-authenticator (comprueba cookie existente si la hay)
+# Inicializa streamlit-authenticator y restaura sesión desde cookie si existe.
+# login(location='unrendered') lee st.context.cookies y setea authentication_status
+# sin renderizar ningún formulario — DEBE llamarse antes del st.stop().
 _authenticator = None
 try:
     import streamlit_authenticator as stauth
@@ -711,12 +784,14 @@ try:
     }
     _authenticator = stauth.Authenticate(
         _auth_creds,
-        cookie_name="betvision_session",
-        cookie_key=st.secrets["auth"]["cookie_key"],
-        cookie_expiry_days=30,
+        cookie_name=st.secrets["cookie"]["name"],
+        cookie_key=st.secrets["cookie"]["key"],
+        cookie_expiry_days=float(st.secrets["cookie"]["expiry_days"]),
     )
+    # Intentar restaurar sesión desde cookie (no renderiza formulario)
+    _authenticator.login(location='unrendered')
 except Exception:
-    pass  # Si stauth no está instalado o secrets no existe, login por bcrypt directo
+    pass  # bcrypt directo como fallback si stauth falla
 
 if st.session_state.get("authentication_status") is not True:
     _render_login_page()   # → inyecta CSS + UI + lógica, termina con st.stop()
@@ -818,7 +893,6 @@ body, p, label, input, select, textarea, button,
     color: #aac4d4 !important;
     border: none !important;
     border-radius: 8px !important;
-    text-align: left !important;
     padding: 0 12px 0 14px !important;
     font-size: 13px !important;
     font-weight: 500 !important;
@@ -829,11 +903,28 @@ body, p, label, input, select, textarea, button,
     display: flex !important;
     align-items: center !important;
     justify-content: flex-start !important;
+    text-align: left !important;
+    width: 100% !important;
+    transition: background 0.15s ease, color 0.15s ease !important;
+}
+/* Forzar alineación izquierda en el contenido interno del botón */
+[data-testid="stSidebar"] .stButton > button [data-testid="stButtonContent"] {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    text-align: left !important;
+    width: 100% !important;
+}
+[data-testid="stSidebar"] .stButton > button p {
+    text-align: left !important;
+    margin: 0 !important;
+    line-height: 1 !important;
     width: 100% !important;
 }
 [data-testid="stSidebar"] .stButton > button:hover {
-    background: rgba(255,255,255,0.06) !important;
+    background: rgba(255,255,255,0.07) !important;
     color: #ffffff !important;
+    opacity: 1 !important;
 }
 
 /* ── Categorías del sidebar (estilo DeOP) ── */
@@ -1435,6 +1526,9 @@ _DEFAULTS = {
     "modo_observacion":  True,
 }
 
+# Restaurar estado persistido ANTES de aplicar defaults (el archivo tiene prioridad)
+_cargar_estado_sesion()
+
 # Solo inicializamos cada variable si NO existe aún en session_state
 # Esto evita resetear valores cuando el usuario interactúa con la app
 for clave, valor in _DEFAULTS.items():
@@ -1492,28 +1586,45 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    # ── Clave de nav + CSS de botón activo (fondo azul #2563EB) ────────
-    _pagina_nav = st.session_state.get("pagina_activa", "Análisis de Partidos")
+    # ── Mapeo fijo ruta→key ASCII (sin acentos, sin espacios) ──────────
+    _NAV_KEYS: dict[str, str] = {
+        "Análisis de Partidos":   "nav_dashboard",
+        "Agregar Partido":        "nav_analisis",
+        "Claude AI":              "nav_nuevo",
+        "Modelo Predictivo":      "nav_prediccion",
+        "Comparación de Cuotas":  "nav_cuotas",
+        "Análisis en Vivo":       "nav_vivo",
+        "Apuesta Dominada":       "nav_apuestas",
+        "Historial Dominada":     "nav_historial",
+        "Historial Análisis Claude": "nav_stats",
+        "Alertas y Retiradas":    "nav_alertas",
+        "Configuración":          "nav_config",
+    }
 
-    def _nav_key(nombre: str) -> str:
-        return "nav_" + re.sub(r"[^a-z0-9]", "_", nombre.lower())
-
-    _clase_activa = _nav_key(_pagina_nav)
-    st.markdown(
-        f"<style>"
-        f"[data-testid='stSidebar'] .st-key-{_clase_activa} button {{"
-        f"  background:var(--acento-azul,#2563EB) !important;"
-        f"  color:#ffffff !important;"
-        f"  font-weight:600 !important;"
-        f"  border-radius:8px !important;"
+    # ── CSS botón activo ─────────────────────────────────────────────────
+    # El reset base usa [data-testid='stSidebar'] .stButton > button (especificidad 0,1,1,1).
+    # Añadimos .stButton al selector activo → 0,1,2,1: siempre gana aunque ambos tengan !important.
+    _pagina_nav   = st.session_state.get("pagina_activa", "Análisis de Partidos")
+    _key_activo   = _NAV_KEYS.get(_pagina_nav, "nav_dashboard")
+    _css_activo = (
+        f"[data-testid='stSidebar'] .st-key-{_key_activo} .stButton > button {{"
+        f"  background: #2563EB !important;"
+        f"  color: #ffffff !important;"
+        f"  font-weight: 600 !important;"
+        f"  border-radius: 8px !important;"
+        f"  opacity: 1 !important;"
         f"}}"
-        f"</style>",
-        unsafe_allow_html=True,
+        f"[data-testid='stSidebar'] .st-key-{_key_activo} .stButton > button p {{"
+        f"  color: #ffffff !important;"
+        f"}}"
+        f"[data-testid='stSidebar'] .st-key-{_key_activo} .stButton > button:hover {{"
+        f"  background: #1D4ED8 !important;"
+        f"}}"
     )
+    st.markdown(f"<style>{_css_activo}</style>", unsafe_allow_html=True)
 
     # ── Iconos SVG Lucide via CSS ::before ─────────────────────────────
     def _svg_uri(inner: str) -> str:
-        """Envuelve el inner SVG y lo convierte en data-URI para CSS background-image."""
         full = (
             "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'"
             " fill='none' stroke='rgba(255,255,255,.72)'"
@@ -1524,19 +1635,17 @@ with st.sidebar:
         return f"url(\"data:image/svg+xml,{encoded}\")"
 
     _NAV_ICONS: dict[str, str] = {
-        # Grupo 1
-        "nav_an_lisis_de_partidos":      _svg_uri("<path d='M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/><polyline points='9 22 9 12 15 12 15 22'/>"),
-        "nav_agregar_partido":           _svg_uri("<line x1='18' y1='20' x2='18' y2='10'/><line x1='12' y1='20' x2='12' y2='4'/><line x1='6' y1='20' x2='6' y2='14'/>"),
-        "nav_claude_ai":                 _svg_uri("<path d='M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z'/>"),
-        "nav_modelo_predictivo":         _svg_uri("<circle cx='12' cy='12' r='10'/><circle cx='12' cy='12' r='6'/><circle cx='12' cy='12' r='2'/>"),
-        "nav_comparaci_n_de_cuotas":     _svg_uri("<polyline points='22 7 13.5 15.5 8.5 10.5 2 17'/><polyline points='16 7 22 7 22 13'/>"),
-        "nav_an_lisis_en_vivo":          _svg_uri("<polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/>"),
-        # Grupo 2
-        "nav_apuesta_dominada":          _svg_uri("<polygon points='12 2 2 7 12 12 22 7 12 2'/><polyline points='2 17 12 22 22 17'/><polyline points='2 12 12 17 22 12'/>"),
-        "nav_historial_dominada":        _svg_uri("<path d='M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z'/>"),
-        "nav_historial_an_lisis_claude": _svg_uri("<path d='M3 3v18h18'/><path d='m19 9-5 5-4-4-3 3'/>"),
-        "nav_alertas_y_retiradas":       _svg_uri("<path d='M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9'/><path d='M10.3 21a1.94 1.94 0 0 0 3.4 0'/>"),
-        "nav_configuraci_n":             _svg_uri("<circle cx='12' cy='12' r='3'/><path d='M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z'/>"),
+        "nav_dashboard":   _svg_uri("<path d='M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/><polyline points='9 22 9 12 15 12 15 22'/>"),
+        "nav_analisis":    _svg_uri("<line x1='18' y1='20' x2='18' y2='10'/><line x1='12' y1='20' x2='12' y2='4'/><line x1='6' y1='20' x2='6' y2='14'/>"),
+        "nav_nuevo":       _svg_uri("<path d='M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z'/>"),
+        "nav_prediccion":  _svg_uri("<circle cx='12' cy='12' r='10'/><circle cx='12' cy='12' r='6'/><circle cx='12' cy='12' r='2'/>"),
+        "nav_cuotas":      _svg_uri("<polyline points='22 7 13.5 15.5 8.5 10.5 2 17'/><polyline points='16 7 22 7 22 13'/>"),
+        "nav_vivo":        _svg_uri("<polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/>"),
+        "nav_apuestas":    _svg_uri("<polygon points='12 2 2 7 12 12 22 7 12 2'/><polyline points='2 17 12 22 22 17'/><polyline points='2 12 12 17 22 12'/>"),
+        "nav_historial":   _svg_uri("<path d='M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z'/>"),
+        "nav_stats":       _svg_uri("<path d='M3 3v18h18'/><path d='m19 9-5 5-4-4-3 3'/>"),
+        "nav_alertas":     _svg_uri("<path d='M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9'/><path d='M10.3 21a1.94 1.94 0 0 0 3.4 0'/>"),
+        "nav_config":      _svg_uri("<circle cx='12' cy='12' r='3'/><path d='M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z'/>"),
     }
 
     _icon_css = "".join(
@@ -1559,7 +1668,7 @@ with st.sidebar:
         ("Análisis en Vivo",      "Análisis en Vivo"),
     ]
     for _lbl, _ruta in _NAV_G1:
-        if st.button(_lbl, key=_nav_key(_ruta),
+        if st.button(_lbl, key=_NAV_KEYS[_ruta],
                      use_container_width=True, type="secondary"):
             st.session_state.pagina_activa = _ruta
             st.rerun()
@@ -1567,14 +1676,14 @@ with st.sidebar:
     # ── Grupo 2 — Gestión ───────────────────────────────────────────────
     st.markdown('<div class="deop-categoria">GESTIÓN</div>', unsafe_allow_html=True)
     _NAV_G2 = [
-        ("Apuestas",     "Apuesta Dominada"),
-        ("Historial",    "Historial Dominada"),
-        ("Estadísticas", "Historial Análisis Claude"),
-        ("Alertas",      "Alertas y Retiradas"),
-        ("Configuración","Configuración"),
+        ("Apuestas",      "Apuesta Dominada"),
+        ("Historial",     "Historial Dominada"),
+        ("Estadísticas",  "Historial Análisis Claude"),
+        ("Alertas",       "Alertas y Retiradas"),
+        ("Configuración", "Configuración"),
     ]
     for _lbl, _ruta in _NAV_G2:
-        if st.button(_lbl, key=_nav_key(_ruta),
+        if st.button(_lbl, key=_NAV_KEYS[_ruta],
                      use_container_width=True, type="secondary"):
             st.session_state.pagina_activa = _ruta
             st.rerun()
@@ -1704,6 +1813,12 @@ with st.sidebar:
                  use_container_width=True, type="secondary"):
         st.session_state["pagina_activa"] = "Escáner de Valor"
         st.session_state["scan_trigger"]  = True
+        st.rerun()
+
+    if st.button("🗑️ Nuevo análisis", key="btn_nuevo_analisis",
+                 use_container_width=True, type="secondary",
+                 help="Limpia el análisis actual y el estado guardado"):
+        _limpiar_estado_sesion()
         st.rerun()
 
     st.markdown(
@@ -1854,11 +1969,6 @@ with _hero_c2:
 # ─────────────────────────────────────────────────────────────────────
 _kpi_cards_virtual()
 
-# ─────────────────────────────────────────────────────────────────────
-#  BARRA SUPERIOR — 6 métricas con sparklines
-# ─────────────────────────────────────────────────────────────────────
-_barra_stats_top()
-
 # ── Banner Modo Observación ──────────────────────────────────────────────────
 if st.session_state.get("modo_observacion"):
     st.markdown(
@@ -1997,3 +2107,6 @@ elif pagina == "Configuración":
         '</div>',
         unsafe_allow_html=True,
     )
+
+# ── Guardar estado de trabajo al final de cada ejecución ──────────────────────
+_guardar_estado_sesion()
