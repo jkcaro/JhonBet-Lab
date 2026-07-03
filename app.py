@@ -571,35 +571,33 @@ body, p, label, input, select, textarea, button,
     color: #ffffff !important;
 }
 
-/* ── Nav buttons del sidebar — altura fija 36px para no saltar al cambiar página ── */
+/* ── Nav buttons del sidebar ── */
 [data-testid="stSidebar"] .stButton {
     margin: 1px 0 !important;
-    padding: 0 !important;
+    padding: 0 6px !important;
     line-height: 1 !important;
 }
 [data-testid="stSidebar"] .stButton > button {
     background: transparent !important;
     color: #aac4d4 !important;
     border: none !important;
-    border-left: 2px solid transparent !important;
-    border-radius: 0 6px 6px 0 !important;
+    border-radius: 8px !important;
     text-align: left !important;
-    padding: 0 12px !important;
-    font-size: 12px !important;
+    padding: 0 12px 0 14px !important;
+    font-size: 13px !important;
     font-weight: 500 !important;
     letter-spacing: .2px !important;
-    height: 36px !important;
-    min-height: 36px !important;
-    max-height: 36px !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    max-height: 40px !important;
     display: flex !important;
     align-items: center !important;
     justify-content: flex-start !important;
     width: 100% !important;
 }
 [data-testid="stSidebar"] .stButton > button:hover {
-    background: rgba(var(--acento-dorado-rgb),0.14) !important;
-    color: var(--acento-dorado) !important;
-    border-left-color: var(--acento-dorado) !important;
+    background: rgba(255,255,255,0.06) !important;
+    color: #ffffff !important;
 }
 
 /* ── Categorías del sidebar (estilo DeOP) ── */
@@ -609,8 +607,8 @@ body, p, label, input, select, textarea, button,
     color: #6f96aa;
     letter-spacing: 1.6px;
     text-transform: uppercase;
-    padding: 10px 10px 4px;
-    margin-top: 2px;
+    padding: 10px 10px 3px 18px;
+    margin-top: 4px;
 }
 
 /* ── Tarjetas ── */
@@ -1268,10 +1266,10 @@ with st.sidebar:
     st.markdown(
         f"<style>"
         f"[data-testid='stSidebar'] .st-key-{_clase_activa} button {{"
-        f"  background:#2563EB !important;"
+        f"  background:var(--acento-azul,#2563EB) !important;"
         f"  color:#ffffff !important;"
         f"  font-weight:600 !important;"
-        f"  border-left:none !important;"
+        f"  border-radius:8px !important;"
         f"}}"
         f"</style>",
         unsafe_allow_html=True,
@@ -1315,6 +1313,7 @@ with st.sidebar:
     st.markdown(f"<style>{_icon_css}</style>", unsafe_allow_html=True)
 
     # ── Grupo 1 — Análisis ──────────────────────────────────────────────
+    st.markdown('<div class="deop-categoria">ANÁLISIS</div>', unsafe_allow_html=True)
     _NAV_G1 = [
         ("Dashboard",             "Análisis de Partidos"),
         ("Análisis de Partidos",  "Agregar Partido"),
@@ -1329,13 +1328,8 @@ with st.sidebar:
             st.session_state.pagina_activa = _ruta
             st.rerun()
 
-    # ── Separador fino ──────────────────────────────────────────────────
-    st.markdown(
-        '<hr style="border:none;border-top:1px solid rgba(255,255,255,.08);margin:6px 0">',
-        unsafe_allow_html=True,
-    )
-
     # ── Grupo 2 — Gestión ───────────────────────────────────────────────
+    st.markdown('<div class="deop-categoria">GESTIÓN</div>', unsafe_allow_html=True)
     _NAV_G2 = [
         ("Apuestas",     "Apuesta Dominada"),
         ("Historial",    "Historial Dominada"),
@@ -1546,21 +1540,25 @@ with st.sidebar:
 
     # ── Tarjeta de perfil ───────────────────────────────────────────────
     st.markdown(
-        '<div style="background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.22);'
-        'border-radius:8px;padding:10px 12px;margin-top:14px;">'
+        '<div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);'
+        'border-radius:10px;padding:12px 14px;margin-top:14px;">'
         '<div style="display:flex;align-items:center;gap:10px;">'
-        '<div style="width:34px;height:34px;border-radius:50%;'
-        'background:linear-gradient(135deg,#2563EB,#1D4ED8);'
+        '<div style="width:40px;height:40px;border-radius:50%;'
+        'background:linear-gradient(135deg,var(--acento-azul,#2563EB),#1D4ED8);'
         'display:flex;align-items:center;justify-content:center;'
-        'font-size:15px;font-weight:700;color:#fff;flex-shrink:0;">J</div>'
+        'font-size:14px;font-weight:700;color:#fff;flex-shrink:0;'
+        'letter-spacing:-.5px;">JB</div>'
         '<div style="flex:1;min-width:0;">'
-        '<div style="color:#E2E8F0;font-size:13px;font-weight:600;'
-        'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">JhonBet</div>'
-        '<span style="display:inline-block;background:#F59E0B;color:#000;'
-        'font-size:9px;font-weight:700;letter-spacing:1px;'
-        'padding:1px 6px;border-radius:3px;margin-top:2px;">PRO</span>'
+        '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">'
+        '<span style="color:#E2E8F0;font-size:13px;font-weight:600;'
+        'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">JhonBet</span>'
+        '<span style="background:var(--acento-azul,#2563EB);color:#fff;'
+        'font-size:9px;font-weight:700;letter-spacing:.8px;'
+        'padding:1px 6px;border-radius:3px;flex-shrink:0;">PRO</span>'
         '</div>'
-        '<div style="color:#94A3B8;font-size:14px;cursor:pointer;">⚙️</div>'
+        '<div style="color:rgba(255,255,255,0.4);font-size:10px;font-weight:400;">'
+        'Plan Profesional</div>'
+        '</div>'
         '</div>'
         '</div>',
         unsafe_allow_html=True,

@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(pip show *)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "Bash(wsl *)"
     ]
   }
 }
