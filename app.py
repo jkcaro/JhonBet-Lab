@@ -475,6 +475,216 @@ def _barra_stats_top() -> None:
     st.markdown(f'<div class="stats-row">{cards_html}</div>', unsafe_allow_html=True)
 
 
+# ─────────────────────────────────────────────────────────────────────
+#  PANTALLA DE LOGIN — bloquea toda la app
+# ─────────────────────────────────────────────────────────────────────
+def _render_login_page() -> None:
+    """
+    Renderiza la pantalla completa de login y llama st.stop().
+    Panel izquierdo: tarjeta oscura con formulario.
+    Panel derecho: imagen del estadio a pantalla completa.
+    """
+    import base64 as _b64
+    import bcrypt as _bcrypt
+
+    # Imagen estadio → base64 para CSS background-image
+    _img_path = Path(__file__).parent / "assets" / "estadio-jugadores.png"
+    _img_css = ""
+    if _img_path.exists():
+        _img_b64_str = _b64.b64encode(_img_path.read_bytes()).decode()
+        _img_css = (
+            f'.login-panel-right{{background-image:url("data:image/png;base64,{_img_b64_str}");'
+            f'background-size:cover;background-position:center;}}'
+        )
+
+    st.markdown(f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@600;700&display=swap');
+/* ── Ocultar chrome de Streamlit ── */
+[data-testid="stSidebar"],[data-testid="stHeader"],
+[data-testid="stToolbar"],[data-testid="stDecoration"]{{display:none!important;}}
+section[data-testid="stMain"]{{padding:0!important;}}
+[data-testid="stMainBlockContainer"],.block-container{{
+    padding:0!important;max-width:100%!important;width:100%!important;
+}}
+/* ── Columnas full-viewport ── */
+[data-testid="stHorizontalBlock"]{{
+    gap:0!important;min-height:100vh!important;align-items:stretch!important;
+}}
+/* Panel izquierdo */
+[data-testid="stHorizontalBlock"]>[data-testid="stColumn"]:nth-child(1){{
+    background:#0F172A!important;padding:0!important;min-height:100vh!important;
+}}
+[data-testid="stHorizontalBlock"]>[data-testid="stColumn"]:nth-child(1)>[data-testid="stVerticalBlock"]{{
+    min-height:100vh!important;display:flex!important;
+    flex-direction:column!important;justify-content:center!important;
+    padding:48px!important;box-sizing:border-box!important;max-width:480px!important;
+}}
+/* Panel derecho */
+[data-testid="stHorizontalBlock"]>[data-testid="stColumn"]:nth-child(2){{
+    padding:0!important;min-height:100vh!important;
+}}
+[data-testid="stHorizontalBlock"]>[data-testid="stColumn"]:nth-child(2)>[data-testid="stVerticalBlock"]{{
+    min-height:100vh!important;padding:0!important;
+}}
+/* ── Inputs ── */
+[data-testid="stTextInput"]>div>div{{
+    background:#1E293B!important;border:1px solid #334155!important;
+    border-radius:8px!important;color:#E2E8F0!important;
+}}
+[data-testid="stTextInput"] input{{
+    color:#E2E8F0!important;font-size:14px!important;background:transparent!important;
+    font-family:Inter,sans-serif!important;
+}}
+[data-testid="stTextInput"] input::placeholder{{color:#475569!important;}}
+[data-testid="stTextInput"] label{{
+    color:#64748B!important;font-size:12px!important;font-weight:500!important;
+    font-family:Inter,sans-serif!important;
+}}
+[data-testid="stTextInput"]>div>div:focus-within{{
+    border-color:#2563EB!important;box-shadow:0 0 0 3px rgba(37,99,235,.15)!important;
+}}
+/* ── Checkbox Recordarme ── */
+[data-testid="stCheckbox"] label span{{
+    color:#64748B!important;font-size:13px!important;font-family:Inter,sans-serif!important;
+}}
+/* ── Botón Iniciar sesión ── */
+[data-testid="stFormSubmitButton"]>button{{
+    background:linear-gradient(135deg,#2563EB,#1D4ED8)!important;
+    color:#fff!important;border:none!important;border-radius:10px!important;
+    height:48px!important;font-size:15px!important;font-weight:600!important;
+    width:100%!important;margin-top:4px!important;
+    letter-spacing:.3px!important;cursor:pointer!important;
+    font-family:Inter,sans-serif!important;transition:opacity .15s!important;
+}}
+[data-testid="stFormSubmitButton"]>button:hover{{opacity:.88!important;}}
+/* ── Imagen panel derecho ── */
+{_img_css}
+.login-panel-right{{min-height:100vh;width:100%;position:relative;}}
+.login-panel-right-overlay{{
+    position:absolute;inset:0;
+    background:linear-gradient(135deg,rgba(15,23,42,.3) 0%,rgba(15,23,42,.05) 100%);
+}}
+</style>
+""", unsafe_allow_html=True)
+
+    col_izq, col_der = st.columns(2)
+
+    # ── Panel derecho: estadio ──────────────────────────────────────
+    with col_der:
+        st.markdown(
+            '<div class="login-panel-right">'
+            '<div class="login-panel-right-overlay"></div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+    # ── Panel izquierdo: formulario ─────────────────────────────────
+    with col_izq:
+        # Logo
+        st.markdown(
+            '<div style="display:flex;align-items:center;gap:12px;margin-bottom:40px;">'
+            '<span style="font-size:32px;line-height:1;">⚽</span>'
+            '<div>'
+            '<div style="font-family:Poppins,sans-serif;font-size:20px;font-weight:700;'
+            'color:#fff;line-height:1.1;">'
+            'BETVISION <span style="color:#F59E0B;">AI</span></div>'
+            '<div style="font-size:9px;color:rgba(255,255,255,.38);letter-spacing:2.5px;'
+            'text-transform:uppercase;margin-top:3px;">Professional Analytics</div>'
+            '</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        # Encabezado
+        st.markdown(
+            '<h1 style="font-family:Poppins,sans-serif;font-size:28px;font-weight:700;'
+            'color:#F1F5F9;margin:0 0 6px;line-height:1.2;">Bienvenido de vuelta</h1>'
+            '<p style="font-size:14px;color:#64748B;margin:0 0 28px;'
+            'font-family:Inter,sans-serif;">Inicia sesión en tu cuenta</p>',
+            unsafe_allow_html=True,
+        )
+
+        # Formulario
+        with st.form("_form_login_gate", clear_on_submit=False):
+            _li_email    = st.text_input("Correo / Usuario", placeholder="jhon@betvision.com")
+            _li_password = st.text_input("Contraseña", type="password", placeholder="••••••••")
+            _li_remember = st.checkbox("Recordarme")
+            _li_submit   = st.form_submit_button("Iniciar sesión", use_container_width=True)
+
+        # Botones sociales decorativos (deshabilitados)
+        st.markdown("""
+<div style="display:flex;align-items:center;gap:12px;margin:22px 0 16px;">
+  <div style="flex:1;height:1px;background:#1E293B;"></div>
+  <span style="font-size:12px;color:#475569;white-space:nowrap;font-family:Inter,sans-serif;">
+    o continúa con</span>
+  <div style="flex:1;height:1px;background:#1E293B;"></div>
+</div>
+<div style="display:flex;gap:10px;">
+  <button disabled title="Próximamente"
+    style="flex:1;height:44px;background:#1E293B;border:1px solid #334155;
+    border-radius:8px;color:#475569;font-size:12px;cursor:not-allowed;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    font-family:Inter,sans-serif;opacity:.7;">
+    <svg width="15" height="15" viewBox="0 0 24 24">
+      <path fill="#475569" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+      <path fill="#475569" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+      <path fill="#475569" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+      <path fill="#475569" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+    </svg>
+    Google — Próximamente
+  </button>
+  <button disabled title="Próximamente"
+    style="flex:1;height:44px;background:#1E293B;border:1px solid #334155;
+    border-radius:8px;color:#475569;font-size:12px;cursor:not-allowed;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    font-family:Inter,sans-serif;opacity:.7;">
+    <svg width="15" height="15" viewBox="0 0 21 21">
+      <rect x="1" y="1" width="9" height="9" fill="#475569"/>
+      <rect x="11" y="1" width="9" height="9" fill="#475569"/>
+      <rect x="1" y="11" width="9" height="9" fill="#475569"/>
+      <rect x="11" y="11" width="9" height="9" fill="#475569"/>
+    </svg>
+    Microsoft — Próximamente
+  </button>
+</div>
+""", unsafe_allow_html=True)
+
+        # ── Lógica de autenticación ─────────────────────────────────
+        if _li_submit:
+            _login_ok = False
+            try:
+                _uname  = st.secrets["auth"]["username"]
+                _email  = st.secrets["auth"]["email"]
+                _stored = st.secrets["auth"]["hashed_password"].encode()
+                _typed  = _li_email.strip().lower()
+                if _typed in (_uname.lower(), _email.lower()):
+                    _login_ok = _bcrypt.checkpw(_li_password.encode(), _stored)
+            except Exception:
+                pass
+
+            if _login_ok:
+                st.session_state["authentication_status"] = True
+                st.session_state["nombre_usuario"]        = st.secrets["auth"].get("name", "Jhon")
+                if _li_remember and _authenticator is not None:
+                    try:
+                        _authenticator.cookie_handler.set_cookie()
+                    except Exception:
+                        pass
+                st.rerun()
+            else:
+                if _li_email or _li_password:
+                    st.markdown(
+                        '<div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.35);'
+                        'border-radius:8px;padding:10px 14px;margin-top:10px;'
+                        'font-size:13px;color:#EF4444;font-family:Inter,sans-serif;">'
+                        '⚠️ Correo o contraseña incorrectos.</div>',
+                        unsafe_allow_html=True,
+                    )
+
+    st.stop()
+
+
 # ─── Configuración global de la página ────────────────────────────────────────
 # Esta llamada DEBE ser la primera de Streamlit en el script.
 # Define el título de la pestaña del navegador, el icono y el layout.
@@ -484,6 +694,32 @@ st.set_page_config(
     layout="wide",                      # Usa todo el ancho de la pantalla
     initial_sidebar_state="auto",        # Desktop: expandido · Mobile: colapsado
 )
+
+# ─── Puerta de autenticación ───────────────────────────────────────────────────
+# Inicializa streamlit-authenticator (comprueba cookie existente si la hay)
+_authenticator = None
+try:
+    import streamlit_authenticator as stauth
+    _auth_creds = {
+        "usernames": {
+            st.secrets["auth"]["username"]: {
+                "name":     st.secrets["auth"]["name"],
+                "email":    st.secrets["auth"]["email"],
+                "password": st.secrets["auth"]["hashed_password"],
+            }
+        }
+    }
+    _authenticator = stauth.Authenticate(
+        _auth_creds,
+        cookie_name="betvision_session",
+        cookie_key=st.secrets["auth"]["cookie_key"],
+        cookie_expiry_days=30,
+    )
+except Exception:
+    pass  # Si stauth no está instalado o secrets no existe, login por bcrypt directo
+
+if st.session_state.get("authentication_status") is not True:
+    _render_login_page()   # → inyecta CSS + UI + lógica, termina con st.stop()
 
 # ─────────────────────────────────────────────────────────────────────
 #  ESTILOS GLOBALES — mínimos, sin imágenes ni posicionamiento absoluto

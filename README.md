@@ -12,7 +12,12 @@ cd /home/jhoncaro/proyectos/JhonBet-Lab
 claude
 
 
-
+┌────────────┬──────────────┐
+  │   Campo    │    Valor     │
+  ├────────────┼──────────────┤
+  │ Usuario    │ jhon         │
+  ├────────────┼──────────────┤
+  │ Contraseña │ JhonBet2024! 
 
 Plataforma de análisis de apuestas deportivas con modelo Poisson/xG, comparación de cuotas en tiempo real y análisis con Claude AI.
 
