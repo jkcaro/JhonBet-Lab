@@ -1,5 +1,5 @@
 """
-JhonBet Lab — Aplicación principal de análisis de apuestas deportivas.
+BetVision AI — Aplicación principal de análisis de apuestas deportivas.
 
 Esta app permite:
   - Analizar partidos con el modelo Poisson/xG
@@ -227,6 +227,184 @@ def _sparkline_svg(valores: list, color: str = "#7c3aed",
     )
 
 
+def _kpi_cards_virtual() -> None:
+    """Fila de 6 tarjetas KPI grandes calculadas desde virtual_bets.csv con sparklines Plotly."""
+    import plotly.graph_objects as go
+    from datetime import datetime, timedelta
+
+    _RUTA_VB = Path(__file__).parent / "data" / "virtual_bets.csv"
+
+    total = ganadas = perdidas = 0
+    neto = roi_30d = yield_val = win_rate = 0.0
+    serie_acum: list = []
+    serie_acum_30: list = []
+
+    try:
+        df = pd.read_csv(_RUTA_VB)
+        df["pl_virtual"]    = pd.to_numeric(df["pl_virtual"],    errors="coerce").fillna(0)
+        df["stake_virtual"] = pd.to_numeric(df["stake_virtual"], errors="coerce").fillna(0)
+        df["fecha"]         = pd.to_datetime(df["fecha"],        errors="coerce")
+
+        total    = len(df)
+        ganadas  = int((df["resultado"] == "Ganado").sum())
+        perdidas = int((df["resultado"] == "Perdido").sum())
+        neto     = float(df["pl_virtual"].sum())
+        resueltas = ganadas + perdidas
+        win_rate  = round(ganadas / resueltas * 100, 1) if resueltas > 0 else 0.0
+
+        total_stake = float(df["stake_virtual"].sum())
+        yield_val   = round(neto / total_stake * 100, 1) if total_stake > 0.01 else 0.0
+
+        hace_30   = datetime.now() - timedelta(days=30)
+        df_30     = df[df["fecha"] >= hace_30]
+        pl_30     = float(df_30["pl_virtual"].sum())
+        sk_30     = float(df_30["stake_virtual"].sum())
+        roi_30d   = round(pl_30 / sk_30 * 100, 1) if sk_30 > 0.01 else 0.0
+
+        serie_acum    = df["pl_virtual"].cumsum().tolist()
+        serie_acum_30 = df_30["pl_virtual"].cumsum().tolist() if not df_30.empty else []
+    except Exception:
+        pass
+
+    if len(serie_acum) < 2:
+        serie_acum = [0.0, 0.0]
+    if len(serie_acum_30) < 2:
+        serie_acum_30 = [0.0, 0.0]
+
+    def _spark(serie: list, color: str, fill: str) -> go.Figure:
+        y = [float(v) for v in serie]
+        fig = go.Figure(go.Scatter(
+            x=list(range(len(y))), y=y,
+            mode="lines",
+            line=dict(color=color, width=1.8),
+            fill="tozeroy", fillcolor=fill,
+        ))
+        fig.update_layout(
+            margin=dict(l=0, r=0, t=0, b=0),
+            height=52,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(visible=False, fixedrange=True),
+            yaxis=dict(visible=False, fixedrange=True),
+            showlegend=False,
+        )
+        return fig
+
+    def _vc(v: float) -> str:
+        return "#16A34A" if v >= 0 else "#EF4444"
+
+    def _s(v: float) -> str:
+        return "+" if v >= 0 else ""
+
+    sin_datos = total == 0
+    kpis = [
+        {
+            "icono": "📈", "bg": "#1E3A5F",
+            "label": "ROI 30 días", "sub": "últimos 30 días",
+            "valor": f"{_s(roi_30d)}{roi_30d:.1f}%" if not sin_datos else "—",
+            "color_val": _vc(roi_30d),
+            "serie": serie_acum_30, "spark_c": _vc(roi_30d),
+            "fill": f"rgba({'22,163,74' if roi_30d>=0 else '239,68,68'},0.15)",
+        },
+        {
+            "icono": "💰", "bg": "#14291A",
+            "label": "Beneficio Neto", "sub": "P&L acumulado",
+            "valor": f"{_s(neto)}€{neto:.2f}" if not sin_datos else "—",
+            "color_val": _vc(neto),
+            "serie": serie_acum, "spark_c": _vc(neto),
+            "fill": f"rgba({'22,163,74' if neto>=0 else '239,68,68'},0.15)",
+        },
+        {
+            "icono": "🎯", "bg": "#1E1A3F",
+            "label": "Win Rate", "sub": f"{ganadas}G · {perdidas}P",
+            "valor": f"{win_rate:.1f}%" if not sin_datos else "—",
+            "color_val": "#60A5FA",
+            "serie": serie_acum, "spark_c": "#7C3AED",
+            "fill": "rgba(124,58,237,0.15)",
+        },
+        {
+            "icono": "📊", "bg": "#2A2010",
+            "label": "Yield", "sub": "rendimiento/apuesta",
+            "valor": f"{_s(yield_val)}{yield_val:.1f}%" if not sin_datos else "—",
+            "color_val": _vc(yield_val),
+            "serie": serie_acum, "spark_c": "#F59E0B",
+            "fill": "rgba(245,158,11,0.15)",
+        },
+        {
+            "icono": "🎰", "bg": "#102030",
+            "label": "Apuestas Totales", "sub": "apuestas virtuales",
+            "valor": str(total),
+            "color_val": "#60A5FA",
+            "serie": list(range(1, max(total + 1, 3))), "spark_c": "#60A5FA",
+            "fill": "rgba(96,165,250,0.15)",
+        },
+        {
+            "icono": "📉", "bg": "#2A1010",
+            "label": "Pérdidas", "sub": f"{100 - win_rate:.1f}% del total" if not sin_datos else "sin datos",
+            "valor": str(perdidas),
+            "color_val": "#EF4444",
+            "serie": [float(perdidas)] * max(total, 2), "spark_c": "#EF4444",
+            "fill": "rgba(239,68,68,0.15)",
+        },
+    ]
+
+    st.markdown("""
+<style>
+.kpi-vb-card {
+    background: var(--bg-tarjeta, #1E293B);
+    border: 1px solid var(--borde, #334155);
+    border-radius: 10px 10px 0 0;
+    padding: 14px 10px 8px;
+    text-align: center;
+    border-bottom: none;
+}
+.kpi-vb-ring {
+    width: 44px; height: 44px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; margin: 0 auto 8px;
+}
+.kpi-vb-val {
+    font-family: "Poppins", sans-serif;
+    font-size: 21px; font-weight: 700; line-height: 1.1; margin-bottom: 3px;
+}
+.kpi-vb-label {
+    font-size: 9.5px; font-weight: 700;
+    color: var(--texto-apagado, #94A3B8);
+    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px;
+}
+.kpi-vb-sub {
+    font-size: 9px; color: var(--texto-apagado, #94A3B8);
+}
+/* el plotly chart debajo cierra visualmente la tarjeta */
+div[data-testid="stVerticalBlock"] > div:has(.kpi-vb-card) + div > div[data-testid="stPlotlyChart"] > div {
+    border: 1px solid var(--borde, #334155);
+    border-top: none;
+    border-radius: 0 0 10px 10px;
+    overflow: hidden;
+}
+</style>
+""", unsafe_allow_html=True)
+
+    cols = st.columns(6)
+    for col, k in zip(cols, kpis):
+        with col:
+            st.markdown(
+                f'<div class="kpi-vb-card">'
+                f'<div class="kpi-vb-ring" style="background:{k["bg"]};">{k["icono"]}</div>'
+                f'<div class="kpi-vb-val" style="color:{k["color_val"]};">{k["valor"]}</div>'
+                f'<div class="kpi-vb-label">{k["label"]}</div>'
+                f'<div class="kpi-vb-sub">{k["sub"]}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            st.plotly_chart(
+                _spark(k["serie"], k["spark_c"], k["fill"]),
+                use_container_width=True,
+                config={"displayModeBar": False},
+                key=f"kpi_vb_{k['label'].replace(' ', '_')}",
+            )
+
+
 def _barra_stats_top() -> None:
     """Renderiza la barra superior de 6 métricas con sparklines."""
     ganancias_serie: list = []
@@ -301,7 +479,7 @@ def _barra_stats_top() -> None:
 # Esta llamada DEBE ser la primera de Streamlit en el script.
 # Define el título de la pestaña del navegador, el icono y el layout.
 st.set_page_config(
-    page_title="JhonBet Lab",
+    page_title="BetVision AI",
     page_icon="📊",
     layout="wide",                      # Usa todo el ancho de la pantalla
     initial_sidebar_state="auto",        # Desktop: expandido · Mobile: colapsado
@@ -312,8 +490,12 @@ st.set_page_config(
 # ─────────────────────────────────────────────────────────────────────
 ESTILOS_CSS = """
 <style>
-/* ── JhonBet Lab — DeOP Connect Theme ── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@600;700&display=swap');
+
+/* ── BetVision AI — DeOP Connect Theme ── */
 :root {
+    --font-titulo: "Poppins", "Segoe UI", system-ui, sans-serif;
+    --font-texto:  "Inter",   "Segoe UI", system-ui, sans-serif;
     --bg:                #f4f6f8;
     --bg-tarjeta:        #ffffff;
     --borde:             #e2e8f0;
@@ -342,11 +524,28 @@ html, body,
 [data-testid="stApp"] {
     background-color: #f4f6f8 !important;
     color: #1a2c38 !important;
-    font-family: "Inter", "Segoe UI", system-ui, sans-serif !important;
+    font-family: var(--font-texto) !important;
 }
-[data-testid="stHeader"]     { background-color: #ffffff !important; }
-[data-testid="stToolbar"]    { display: none; }
-[data-testid="stDecoration"] { display: none; }
+
+/* ── Tipografía: Poppins SemiBold en títulos, Inter en texto ── */
+h1, h2, h3, h4, h5, h6,
+.titulo-tarjeta,
+[data-testid="stHeadingWithActionElements"],
+[data-testid="stMarkdownContainer"] h1,
+[data-testid="stMarkdownContainer"] h2,
+[data-testid="stMarkdownContainer"] h3 {
+    font-family: var(--font-titulo) !important;
+    font-weight: 600 !important;
+}
+body, p, label, input, select, textarea, button,
+[data-testid="stMarkdownContainer"] p,
+[data-testid="stMarkdownContainer"] li {
+    font-family: var(--font-texto) !important;
+}
+
+[data-testid="stHeader"]     { display: none !important; height: 0 !important; }
+[data-testid="stToolbar"]    { display: none !important; }
+[data-testid="stDecoration"] { display: none !important; }
 
 /* ── Sidebar — azul petróleo DeOP ── */
 [data-testid="stSidebar"],
@@ -394,6 +593,7 @@ html, body,
     max-height: 36px !important;
     display: flex !important;
     align-items: center !important;
+    justify-content: flex-start !important;
     width: 100% !important;
 }
 [data-testid="stSidebar"] .stButton > button:hover {
@@ -608,6 +808,47 @@ footer    { visibility: hidden; }
 
 /* ── .scada-grid (paneles live analysis): ya usa auto-fit minmax(260px,1fr)
       → apila solo en <560px sin CSS extra necesario.               ── */
+
+/* ── Expander global — paleta del tema activo ── */
+[data-testid="stExpander"] {
+    background: var(--bg-tarjeta) !important;
+    border: 1px solid var(--borde) !important;
+}
+[data-testid="stExpander"] summary {
+    background: var(--bg-tarjeta) !important;
+    color: var(--texto) !important;
+}
+[data-testid="stExpander"] > div {
+    background: var(--bg-tarjeta) !important;
+}
+
+/* ── Inputs globales — paleta del tema activo ── */
+[data-testid="stSelectbox"] > div > div {
+    background: var(--bg-tarjeta) !important;
+    border: 1px solid var(--borde) !important;
+    color: var(--texto) !important;
+}
+[data-testid="stSelectbox"] > div > div > div {
+    color: var(--texto) !important;
+}
+input[data-testid="stNumberInputField"],
+[data-testid="stTextInput"] input {
+    background: var(--bg-tarjeta) !important;
+    border: 1px solid var(--borde) !important;
+    color: var(--texto) !important;
+}
+
+/* ── Header nativo completamente oculto — hero en área de contenido ── */
+section[data-testid="stMain"] {
+    padding-top: 0 !important;
+    margin-top: 0 !important;
+}
+[data-testid="stMainBlockContainer"],
+.block-container {
+    padding-top: 0 !important;
+    margin-top: 0 !important;
+    overflow-x: hidden !important;
+}
 </style>
 """
 
@@ -616,7 +857,7 @@ st.markdown(ESTILOS_CSS, unsafe_allow_html=True)
 # ─────────────────────────────────────────────────────────────────────
 #  TEMAS VISUALES — estilo DeOP Connect (claro / oscuro)
 # ─────────────────────────────────────────────────────────────────────
-NOMBRES_TEMAS = ["DeOP Claro", "DeOP Oscuro", "Codere"]
+NOMBRES_TEMAS = ["DeOP Claro", "DeOP Oscuro", "Codere", "BetVision"]
 
 _TEMAS_CSS: dict[str, str] = {
     "DeOP Claro": """
@@ -630,6 +871,7 @@ _TEMAS_CSS: dict[str, str] = {
     --texto:             #1a2c38;
     --texto-apagado:     #5a7a9a;
     --acento-verde:      #16a34a;
+    --acento-verde-rgb:  22,163,74;
     --acento-morado:     #0d3b4f;
     --acento-dorado:     #f5a623;
     --acento-dorado-rgb: 245,166,35;
@@ -661,6 +903,7 @@ html, body,
     --texto:             #e6eef2;
     --texto-apagado:     #7fa0b3;
     --acento-verde:      #22c55e;
+    --acento-verde-rgb:  34,197,94;
     --acento-morado:     #4fc3f7;
     --acento-dorado:     #f5a623;
     --acento-dorado-rgb: 245,166,35;
@@ -683,6 +926,65 @@ html, body,
 [data-testid="metric-container"] { background-color: #122430 !important; border: 1px solid #1d3a47 !important; }
 </style>""",
 
+    "BetVision": """
+<style>
+/* BetVision AI — azul profundo + naranja inteligente */
+:root {
+    --bg-principal:      #0F172A;
+    --bg-tarjeta:        #1E293B;
+    --borde:             #334155;
+    --borde-activo:      #2563EB;
+    --texto:             #E2E8F0;
+    --texto-apagado:     #94A3B8;
+    --acento-verde:      #16A34A;
+    --acento-verde-rgb:  22,163,74;
+    --acento-morado:     #60A5FA;
+    --acento-dorado:     #F59E0B;
+    --acento-dorado-rgb: 245,158,11;
+    --acento-azul:       #2563EB;
+    --acento-rojo:       #EF4444;
+    --bg-elemento:       #0F172A;
+    --bg-alerta-exito:   #052e16;
+    --bg-alerta-peligro: #450a0a;
+    --bg-alerta-aviso:   #422006;
+    --boton-bg:          linear-gradient(135deg, #2563EB, #1D4ED8);
+    --logo-color:        #2563EB;
+}
+html, body,
+[data-testid="stApp"],
+[data-testid="stAppViewContainer"] { background-color: #0F172A !important; color: #E2E8F0 !important; }
+[data-testid="stHeader"]           { background-color: #0F172A !important; }
+[data-testid="stSidebar"]          { background-color: #102B3F !important; }
+.tarjeta {
+    background-color: #1E293B !important;
+    border-color: #334155 !important;
+    color: #E2E8F0 !important;
+}
+.titulo-tarjeta {
+    background: #1E293B !important;
+    color: #60A5FA !important;
+    border-bottom: 2px solid #2563EB !important;
+    margin: -14px -16px 10px -16px !important;
+    padding: 8px 16px 7px !important;
+    border-radius: 10px 10px 0 0 !important;
+}
+[data-testid="metric-container"] { background-color: #1E293B !important; border: 1px solid #334155 !important; }
+.stButton > button,
+.stFormSubmitButton > button {
+    background: linear-gradient(135deg, #2563EB, #1D4ED8) !important;
+    color: #ffffff !important;
+}
+.stButton > button:hover,
+.stFormSubmitButton > button:hover {
+    background: #1D4ED8 !important;
+    opacity: 1 !important;
+    color: #ffffff !important;
+}
+.deop-categoria { color: #2563EB !important; }
+.caja-stat  { background: rgba(37,99,235,0.08) !important; border-color: rgba(37,99,235,0.25) !important; }
+.stat-valor { color: #E2E8F0 !important; }
+</style>""",
+
     "Codere": """
 <style>
 /* Codere — negro/gris oscuro + verde Codere */
@@ -694,6 +996,7 @@ html, body,
     --texto:             #ffffff;
     --texto-apagado:     #b0b8d0;
     --acento-verde:      #00e676;
+    --acento-verde-rgb:  0,230,118;
     --acento-morado:     #ffffff;
     --acento-dorado:     #00e676;
     --acento-dorado-rgb: 0,230,118;
@@ -772,16 +1075,6 @@ def _css_tema_activo() -> str:
 # Inyectar CSS del tema ANTES de cualquier otro contenido (máxima prioridad)
 st.markdown(_css_tema_activo(), unsafe_allow_html=True)
 
-# Override stHeader DESPUÉS del tema: el tema pone background-color opaco
-# con !important; esta inyección viene más tarde en el DOM → gana la cascada.
-st.markdown(
-    "<style>@media (max-width:767px){"
-    "[data-testid='stHeader']{background:transparent!important;"
-    "box-shadow:none!important;}"
-    "}</style>",
-    unsafe_allow_html=True,
-)
-
 # Hamburguesa mobile via component HTML (srcdoc = mismo origen → parent.document accesible).
 # stApp tiene position:absolute + overflow:hidden que atrapa position:fixed de sus hijos,
 # por eso el botón se crea en parent.document.body (fuera del clip).
@@ -852,6 +1145,35 @@ _stc.html("""
 </script>
 """, height=0, scrolling=False)
 
+# Forzar padding-top:0 en el bloque principal desde el iframe (JS en contexto del padre).
+_stc.html("""
+<script>
+(function(){
+  var p = window.parent;
+  if (!p || !p.document) return;
+  function _fix(){
+    if (!p.document.getElementById('jbl-notop')) {
+      var s = p.document.createElement('style');
+      s.id = 'jbl-notop';
+      s.textContent =
+        'section[data-testid="stMain"]{padding-top:0!important;}' +
+        '[data-testid="stMainBlockContainer"]{padding-top:0!important;}' +
+        '.block-container{padding-top:0!important;}';
+      p.document.head.appendChild(s);
+    }
+    var m = p.document.querySelector('section[data-testid="stMain"]');
+    if (m) { m.style.setProperty('padding-top','0','important'); }
+    var bc = p.document.querySelector('[data-testid="stMainBlockContainer"]') ||
+             p.document.querySelector('.block-container');
+    if (bc) { bc.style.setProperty('padding-top','0','important'); }
+  }
+  _fix();
+  setTimeout(_fix, 400);
+  setTimeout(_fix, 1200);
+})();
+</script>
+""", height=0, scrolling=False)
+
 
 # ─────────────────────────────────────────────────────────────────────
 #  ESTADO DE SESIÓN — valores por defecto
@@ -864,9 +1186,9 @@ _config_inicial = _cargar_config()   # Leemos configuración guardada en disco
 
 # Tema guardado en config.json de una versión anterior (p.ej. "Azul Profesional")
 # ya no es válido tras el rediseño DeOP — si no coincide con NOMBRES_TEMAS, usar default.
-_tema_guardado = _config_inicial.get("tema", "DeOP Claro")
+_tema_guardado = _config_inicial.get("tema", "BetVision")
 if _tema_guardado not in NOMBRES_TEMAS:
-    _tema_guardado = "DeOP Claro"
+    _tema_guardado = "BetVision"
 
 # Definimos los valores por defecto de todas las variables de sesión
 _DEFAULTS = {
@@ -923,41 +1245,22 @@ PAGINAS = [pag for grupo in PAGINAS_CATEGORIAS.values() for pag in grupo]
 NOMBRE_USUARIO = "Jhon"   # Nombre mostrado en el encabezado
 
 with st.sidebar:
-    # Header del sidebar — DeOP Connect
-    logo_path = Path(__file__).parent / "assets" / "logo.png"
-    if logo_path.exists():
-        st.image(str(logo_path), width=140)
-    else:
-        st.markdown(
-            '<div style="padding:6px 0 12px 0;">'
-            '<div style="font-size:9px;font-weight:700;color:var(--acento-dorado);letter-spacing:2.5px;'
-            'text-transform:uppercase;margin-bottom:5px;opacity:.9;">Trading Dashboard</div>'
-            '<div style="font-size:17px;font-weight:800;line-height:1.1;">'
-            '<span style="color:#ffffff;">📊 JhonBet</span>'
-            '<span style="color:var(--acento-dorado);"> Lab</span>'
-            '</div>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
+    # ── Logo BetVision AI ───────────────────────────────────────────────
+    st.markdown(
+        '<div style="padding:18px 4px 14px 4px;">'
+        '<div style="font-size:21px;font-weight:700;line-height:1;margin-bottom:5px;">'
+        '<span style="color:#ffffff;">⚽ BetVision</span>'
+        '<span style="color:var(--acento-dorado,#F59E0B);"> AI</span>'
+        '</div>'
+        '<div style="font-size:9px;font-weight:600;color:rgba(255,255,255,.38);'
+        'letter-spacing:2.5px;text-transform:uppercase;">Professional Football Analytics</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
-    # Indicador de página activa (línea de color)
+    # ── Clave de nav + CSS de botón activo (fondo azul #2563EB) ────────
     _pagina_nav = st.session_state.get("pagina_activa", "Análisis de Partidos")
-    _nav_label  = next((f"{i} {n}" for i, n in PAGINAS if n == _pagina_nav), "")
-    if _nav_label:
-        st.markdown(
-            f'<div style="font-size:9px;color:var(--acento-dorado);'
-            f'background:rgba(var(--acento-dorado-rgb),.14);'
-            f'border-left:2px solid var(--acento-dorado);border-radius:0 4px 4px 0;'
-            f'padding:3px 8px;margin-bottom:6px;letter-spacing:.3px;">'
-            f'{_nav_label}</div>',
-            unsafe_allow_html=True,
-        )
 
-    # ── Menú de navegación — todos st.button (mismo DOM, sin salto al cambiar página) ──
-    # La key usa solo ASCII para que Streamlit genere una clase CSS predecible:
-    # key="nav_analisis_de_partidos" → clase "st-key-nav_analisis_de_partidos"
-    # Inyectamos un bloque <style> que pinta el botón activo en dorado sin
-    # alterar la estructura DOM (misma altura, mismo margin, mismo wrapper).
     def _nav_key(nombre: str) -> str:
         return "nav_" + re.sub(r"[^a-z0-9]", "_", nombre.lower())
 
@@ -965,37 +1268,104 @@ with st.sidebar:
     st.markdown(
         f"<style>"
         f"[data-testid='stSidebar'] .st-key-{_clase_activa} button {{"
-        f"  background:rgba(245,166,35,.15) !important;"
-        f"  color:#f5a623 !important;"
-        f"  border-left-color:#f5a623 !important;"
-        f"  font-weight:700 !important;"
+        f"  background:#2563EB !important;"
+        f"  color:#ffffff !important;"
+        f"  font-weight:600 !important;"
+        f"  border-left:none !important;"
         f"}}"
         f"</style>",
         unsafe_allow_html=True,
     )
 
-    for _categoria, _paginas_grupo in PAGINAS_CATEGORIAS.items():
-        st.markdown(f'<div class="deop-categoria">{_categoria}</div>', unsafe_allow_html=True)
-        for icono, nombre_pagina in _paginas_grupo:
-            if st.button(f"{icono}  {nombre_pagina}", key=_nav_key(nombre_pagina),
-                         use_container_width=True, type="secondary"):
-                st.session_state.pagina_activa = nombre_pagina
-                st.rerun()
+    # ── Iconos SVG Lucide via CSS ::before ─────────────────────────────
+    def _svg_uri(inner: str) -> str:
+        """Envuelve el inner SVG y lo convierte en data-URI para CSS background-image."""
+        full = (
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'"
+            " fill='none' stroke='rgba(255,255,255,.72)'"
+            " stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>"
+            + inner + "</svg>"
+        )
+        encoded = full.replace("%", "%25").replace("<", "%3C").replace(">", "%3E").replace('"', "%22").replace("#", "%23")
+        return f"url(\"data:image/svg+xml,{encoded}\")"
 
-    st.markdown("<hr style='border-color:var(--borde);margin:6px 0'>", unsafe_allow_html=True)
+    _NAV_ICONS: dict[str, str] = {
+        # Grupo 1
+        "nav_an_lisis_de_partidos":      _svg_uri("<path d='M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/><polyline points='9 22 9 12 15 12 15 22'/>"),
+        "nav_agregar_partido":           _svg_uri("<line x1='18' y1='20' x2='18' y2='10'/><line x1='12' y1='20' x2='12' y2='4'/><line x1='6' y1='20' x2='6' y2='14'/>"),
+        "nav_claude_ai":                 _svg_uri("<path d='M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z'/>"),
+        "nav_modelo_predictivo":         _svg_uri("<circle cx='12' cy='12' r='10'/><circle cx='12' cy='12' r='6'/><circle cx='12' cy='12' r='2'/>"),
+        "nav_comparaci_n_de_cuotas":     _svg_uri("<polyline points='22 7 13.5 15.5 8.5 10.5 2 17'/><polyline points='16 7 22 7 22 13'/>"),
+        "nav_an_lisis_en_vivo":          _svg_uri("<polygon points='13 2 3 14 12 14 11 22 21 10 12 10 13 2'/>"),
+        # Grupo 2
+        "nav_apuesta_dominada":          _svg_uri("<polygon points='12 2 2 7 12 12 22 7 12 2'/><polyline points='2 17 12 22 22 17'/><polyline points='2 12 12 17 22 12'/>"),
+        "nav_historial_dominada":        _svg_uri("<path d='M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z'/>"),
+        "nav_historial_an_lisis_claude": _svg_uri("<path d='M3 3v18h18'/><path d='m19 9-5 5-4-4-3 3'/>"),
+        "nav_alertas_y_retiradas":       _svg_uri("<path d='M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9'/><path d='M10.3 21a1.94 1.94 0 0 0 3.4 0'/>"),
+        "nav_configuraci_n":             _svg_uri("<circle cx='12' cy='12' r='3'/><path d='M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z'/>"),
+    }
 
-    # ── Estadísticas personales — 3 columnas con st.columns ──
-    _stats   = _stats_historial()
-    _gan     = _stats["ganancias_netas"]
-    _col_gan = "#1a5c2a" if _gan >= 0 else "#c0001a"
-    _gan_txt = f"{'+'if _gan>=0 else ''}€{_gan}"
+    _icon_css = "".join(
+        f"[data-testid='stSidebar'] .st-key-{k} button p::before{{"
+        f"content:'';display:inline-block;width:14px;height:14px;"
+        f"margin-right:8px;vertical-align:middle;flex-shrink:0;"
+        f"background:{v} no-repeat center/contain;}}"
+        for k, v in _NAV_ICONS.items()
+    )
+    st.markdown(f"<style>{_icon_css}</style>", unsafe_allow_html=True)
+
+    # ── Grupo 1 — Análisis ──────────────────────────────────────────────
+    _NAV_G1 = [
+        ("Dashboard",             "Análisis de Partidos"),
+        ("Análisis de Partidos",  "Agregar Partido"),
+        ("Nuevo Análisis",        "Claude AI"),
+        ("Predicción con IA",     "Modelo Predictivo"),
+        ("Comparación de Cuotas", "Comparación de Cuotas"),
+        ("Análisis en Vivo",      "Análisis en Vivo"),
+    ]
+    for _lbl, _ruta in _NAV_G1:
+        if st.button(_lbl, key=_nav_key(_ruta),
+                     use_container_width=True, type="secondary"):
+            st.session_state.pagina_activa = _ruta
+            st.rerun()
+
+    # ── Separador fino ──────────────────────────────────────────────────
+    st.markdown(
+        '<hr style="border:none;border-top:1px solid rgba(255,255,255,.08);margin:6px 0">',
+        unsafe_allow_html=True,
+    )
+
+    # ── Grupo 2 — Gestión ───────────────────────────────────────────────
+    _NAV_G2 = [
+        ("Apuestas",     "Apuesta Dominada"),
+        ("Historial",    "Historial Dominada"),
+        ("Estadísticas", "Historial Análisis Claude"),
+        ("Alertas",      "Alertas y Retiradas"),
+        ("Configuración","Configuración"),
+    ]
+    for _lbl, _ruta in _NAV_G2:
+        if st.button(_lbl, key=_nav_key(_ruta),
+                     use_container_width=True, type="secondary"):
+            st.session_state.pagina_activa = _ruta
+            st.rerun()
+
+    st.markdown(
+        '<hr style="border:none;border-top:1px solid rgba(255,255,255,.08);margin:6px 0">',
+        unsafe_allow_html=True,
+    )
+
+    # ── Estadísticas personales ─────────────────────────────────────────
+    _stats     = _stats_historial()
+    _gan       = _stats["ganancias_netas"]
+    _col_gan   = "#16A34A" if _gan >= 0 else "#EF4444"
+    _gan_txt   = f"{'+'if _gan>=0 else ''}€{_gan}"
     _racha_txt = f"{_stats['racha']}W" if _stats["racha"] > 0 else "—"
 
     _c1, _c2, _c3 = st.columns(3)
     with _c1:
         st.markdown(
             f'<div class="caja-stat"><div class="stat-etiqueta">Apuestas</div>'
-            f'<div class="stat-valor" style="color:#d0ead8;">{_stats["apuestas_totales"]}</div></div>',
+            f'<div class="stat-valor" style="color:#E2E8F0;">{_stats["apuestas_totales"]}</div></div>',
             unsafe_allow_html=True,
         )
     with _c2:
@@ -1007,11 +1377,10 @@ with st.sidebar:
     with _c3:
         st.markdown(
             f'<div class="caja-stat"><div class="stat-etiqueta">Racha</div>'
-            f'<div class="stat-valor" style="color:#00aaff;">{_racha_txt}</div></div>',
+            f'<div class="stat-valor" style="color:#60A5FA;">{_racha_txt}</div></div>',
             unsafe_allow_html=True,
         )
 
-    # Editor de saldo compacto
     st.number_input(
         "Saldo (€):",
         min_value=0.0, max_value=999999.0,
@@ -1020,10 +1389,13 @@ with st.sidebar:
         on_change=_guardar_saldo,
     )
 
-    st.markdown("<hr style='border-color:var(--borde);margin:6px 0'>", unsafe_allow_html=True)
+    st.markdown(
+        '<hr style="border:none;border-top:1px solid rgba(255,255,255,.08);margin:6px 0">',
+        unsafe_allow_html=True,
+    )
 
-    # ── Actualizar partidos reales ──
-    if st.button("Actualizar partidos reales", key="btn_actualizar",
+    # ── Actualizar partidos reales ──────────────────────────────────────
+    if st.button("🔄 Actualizar partidos", key="btn_actualizar",
                  use_container_width=True, type="secondary"):
         from modules.odds_api import actualizar_datos
         from datetime import datetime as _dt
@@ -1031,39 +1403,35 @@ with st.sidebar:
             try:
                 n, mensaje, stats = actualizar_datos()
                 st.cache_data.clear()
-                st.session_state["debug_ligas"]   = stats
-                st.session_state["debug_mensaje"] = (mensaje, "ok" if n > 0 else "info")
-                st.session_state["debug_timestamp"] = _dt.now().strftime("%d/%m/%Y %H:%M:%S")
-                st.session_state["debug_total"]    = n
+                st.session_state["debug_ligas"]      = stats
+                st.session_state["debug_mensaje"]    = (mensaje, "ok" if n > 0 else "info")
+                st.session_state["debug_timestamp"]  = _dt.now().strftime("%d/%m/%Y %H:%M:%S")
+                st.session_state["debug_total"]      = n
                 if n > 0:
                     st.session_state["analisis_listo"] = False
                     st.session_state.pop("claude_analisis", None)
             except RuntimeError as exc:
-                st.session_state["debug_mensaje"]  = (str(exc), "error")
+                st.session_state["debug_mensaje"] = (str(exc), "error")
                 st.session_state.pop("debug_ligas", None)
 
-    # ── Mensaje de resultado ──
     if _dmsg := st.session_state.get("debug_mensaje"):
         _txt, _tipo = _dmsg
-        _col = "#1a5c2a" if _tipo == "ok" else ("#c0001a" if _tipo == "error" else "#555555")
-        with st.container():
-            st.markdown(
-                f'<div style="font-size:11px;color:{_col};padding:3px 4px;'
-                f'margin:2px 0;border-left:3px solid {_col};padding-left:7px;">'
-                f'{_txt}</div>',
-                unsafe_allow_html=True,
-            )
+        _col = "#16A34A" if _tipo == "ok" else ("#EF4444" if _tipo == "error" else "#555555")
+        st.markdown(
+            f'<div style="font-size:11px;color:{_col};padding:3px 4px;'
+            f'margin:2px 0;border-left:3px solid {_col};padding-left:7px;">'
+            f'{_txt}</div>',
+            unsafe_allow_html=True,
+        )
 
-    # ── Panel de debug colapsable ──────────────────────────────────────────────
     _debug       = st.session_state.get("debug_ligas", [])
     _debug_ts    = st.session_state.get("debug_timestamp", "—")
     _debug_total = st.session_state.get("debug_total", 0)
     _debug_ok    = [r for r in _debug if r["estado"] == "OK"]
-    _debug_fail  = [r for r in _debug if r["estado"] != "OK"]
 
     if _debug:
         with st.expander(
-            f"🔧 Debug API · {len(_debug_ok)} liga(s) OK · {_debug_total} partidos",
+            f"🔧 Debug API · {len(_debug_ok)} OK · {_debug_total} partidos",
             expanded=False,
         ):
             st.markdown(
@@ -1071,12 +1439,11 @@ with st.sidebar:
                 f'Última actualización: <b>{_debug_ts}</b></div>',
                 unsafe_allow_html=True,
             )
-            # Fuentes de datos y sus resultados
             filas_debug = []
             for row in _debug:
                 if row["estado"] == "OK":
-                    _ic, _c = "✅", "#1a5c2a"
-                    _d = f"{row['partidos']} partidos · xG: estimado desde cuotas"
+                    _ic, _c = "✅", "#16A34A"
+                    _d = f"{row['partidos']} partidos"
                 else:
                     _ic, _c = "○", "#888888"
                     _d = row["estado"]
@@ -1084,56 +1451,51 @@ with st.sidebar:
                     f'<div style="font-size:10px;color:{_c};padding:2px 0;">'
                     f'{_ic} <b>{row["liga"]}</b> — {_d}</div>'
                 )
-            # Añadir ESPN si está en session_state
             _espn_n = st.session_state.get("espn_partidos_cargados", 0)
             if _espn_n:
                 filas_debug.append(
-                    f'<div style="font-size:10px;color:#4499ff;padding:2px 0;">'
-                    f'✅ <b>ESPN</b> — {_espn_n} partidos · xG: valor por defecto</div>'
+                    f'<div style="font-size:10px;color:#60A5FA;padding:2px 0;">'
+                    f'✅ <b>ESPN</b> — {_espn_n} partidos</div>'
                 )
-            # Fuente xG del partido activo
             _fuente_xg_act = st.session_state.get("fuente_xg_activa")
             if _fuente_xg_act:
                 _badge_map = {
-                    "estimado": "📊 xG: Estimado desde cuotas",
-                    "manual":   "✏️ xG: Manual (BeSoccer)",
-                    "api":      "📡 xG: API Real",
+                    "estimado": "📊 xG: Estimado",
+                    "manual":   "✏️ xG: Manual",
+                    "api":      "📡 xG: API",
                 }
                 filas_debug.append(
-                    f'<div style="font-size:10px;color:#ffd700;padding:4px 0 0;">'
+                    f'<div style="font-size:10px;color:#F59E0B;padding:4px 0 0;">'
                     f'Partido activo → {_badge_map.get(_fuente_xg_act, _fuente_xg_act)}</div>'
                 )
             st.markdown("".join(filas_debug), unsafe_allow_html=True)
 
-    # ── Escáner de valor ──
     if st.button("🔍 Escanear valor hoy", key="btn_scan_valor",
                  use_container_width=True, type="secondary"):
         st.session_state["pagina_activa"] = "Escáner de Valor"
         st.session_state["scan_trigger"]  = True
         st.rerun()
 
-    st.markdown("<hr style='border-color:var(--borde);margin:6px 0'>", unsafe_allow_html=True)
+    st.markdown(
+        '<hr style="border:none;border-top:1px solid rgba(255,255,255,.08);margin:6px 0">',
+        unsafe_allow_html=True,
+    )
 
-    # ── Fuentes de datos ──
     with st.expander("⚙️ Fuentes de datos", expanded=False):
         st.markdown(
-            '<div style="font-size:10px;color:#8aaa99;margin-bottom:6px;">'
-            'Activa o desactiva cada fuente. Los cambios aplican al escanear y actualizar.</div>',
+            '<div style="font-size:10px;color:#94A3B8;margin-bottom:6px;">'
+            'Activa o desactiva cada fuente.</div>',
             unsafe_allow_html=True,
         )
-        # Valores por defecto
         for k, v in [("fuente_odds", True), ("fuente_espn", True), ("fuente_logos", True)]:
             if k not in st.session_state:
                 st.session_state[k] = v
-
-        st.checkbox("📡 The Odds API (cuotas)",    key="fuente_odds",
+        st.checkbox("📡 The Odds API (cuotas)",       key="fuente_odds",
                     help="Obtiene partidos y cuotas reales para calcular edge")
         st.checkbox("🏟️ ESPN (partidos adicionales)", key="fuente_espn",
                     help="Añade partidos de ESPN a la lista (sin cuotas)")
-        st.checkbox("🖼️ TheSportsDB (logos)",       key="fuente_logos",
+        st.checkbox("🖼️ TheSportsDB (logos)",         key="fuente_logos",
                     help="Muestra logos de equipos junto a los nombres")
-
-        # Botón ESPN separado
         if st.session_state.get("fuente_espn", True):
             if st.button("Cargar partidos ESPN", key="btn_espn",
                          use_container_width=True):
@@ -1144,10 +1506,11 @@ with st.sidebar:
                     st.session_state["espn_partidos_cargados"] = n
                 st.success(msg) if n > 0 else st.info(msg)
 
-    st.markdown("<hr style='border-color:var(--borde);margin:6px 0'>", unsafe_allow_html=True)
+    st.markdown(
+        '<hr style="border:none;border-top:1px solid rgba(255,255,255,.08);margin:6px 0">',
+        unsafe_allow_html=True,
+    )
 
-    # ── Modo Observación ──
-    st.markdown("<hr style='border-color:var(--borde);margin:6px 0'>", unsafe_allow_html=True)
     st.toggle(
         "🔬 Modo Observación",
         key="modo_observacion",
@@ -1155,26 +1518,23 @@ with st.sidebar:
     )
     if st.session_state.get("modo_observacion"):
         st.markdown(
-            '<div style="font-size:10px;color:#00e676;background:#021209;'
-            'border:1px solid #00e676;border-radius:4px;padding:4px 8px;margin-top:4px;">'
+            '<div style="font-size:10px;color:#16A34A;background:rgba(22,163,74,.08);'
+            'border:1px solid rgba(22,163,74,.3);border-radius:4px;padding:4px 8px;margin-top:4px;">'
             '🔬 Modo activo — sin riesgo real</div>',
             unsafe_allow_html=True,
         )
 
-    # ── Selector de tema ──
     st.markdown(
-        '<div style="font-size:10px;color:var(--texto-apagado);font-weight:700;'
-        'text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">Tema Visual</div>',
+        '<div style="font-size:10px;color:rgba(255,255,255,.4);font-weight:600;'
+        'text-transform:uppercase;letter-spacing:1px;margin:8px 0 3px 0;">Tema Visual</div>',
         unsafe_allow_html=True,
     )
 
     def _cambiar_tema():
         st.session_state["tema_activo"] = st.session_state["sel_tema"]
         _guardar_tema()
-        # No se llama st.rerun() aquí porque Streamlit ya hace rerun al cambiar el widget;
-        # el CSS se inyecta al inicio del siguiente render con el nuevo tema.
 
-    idx_actual = NOMBRES_TEMAS.index(st.session_state.get("tema_activo", "DeOP Claro"))
+    idx_actual = NOMBRES_TEMAS.index(st.session_state.get("tema_activo", "BetVision"))
     st.selectbox(
         "Tema:",
         NOMBRES_TEMAS,
@@ -1184,25 +1544,81 @@ with st.sidebar:
         on_change=_cambiar_tema,
     )
 
+    # ── Tarjeta de perfil ───────────────────────────────────────────────
+    st.markdown(
+        '<div style="background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.22);'
+        'border-radius:8px;padding:10px 12px;margin-top:14px;">'
+        '<div style="display:flex;align-items:center;gap:10px;">'
+        '<div style="width:34px;height:34px;border-radius:50%;'
+        'background:linear-gradient(135deg,#2563EB,#1D4ED8);'
+        'display:flex;align-items:center;justify-content:center;'
+        'font-size:15px;font-weight:700;color:#fff;flex-shrink:0;">J</div>'
+        '<div style="flex:1;min-width:0;">'
+        '<div style="color:#E2E8F0;font-size:13px;font-weight:600;'
+        'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">JhonBet</div>'
+        '<span style="display:inline-block;background:#F59E0B;color:#000;'
+        'font-size:9px;font-weight:700;letter-spacing:1px;'
+        'padding:1px 6px;border-radius:3px;margin-top:2px;">PRO</span>'
+        '</div>'
+        '<div style="color:#94A3B8;font-size:14px;cursor:pointer;">⚙️</div>'
+        '</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
 # ─────────────────────────────────────────────────────────────────────
-#  HEADER — estilo DeOP Connect (logo izq. + iconos der.)
+#  HERO BANNER — imagen de estadio + degradado + título + botones
 # ─────────────────────────────────────────────────────────────────────
-_modo_icono = "☀️" if st.session_state.get("tema_activo") == "DeOP Claro" else "🌙"
+# background-image via <style> + clase CSS (DOMPurify sanitiza data: URIs
+# en atributos style inline pero los permite dentro de bloques <style>)
+import base64 as _b64mod
+_estadio_path = Path(__file__).parent / "assets" / "estadio-jugadores.png"
+if _estadio_path.exists():
+    _estadio_b64 = _b64mod.b64encode(_estadio_path.read_bytes()).decode()
+    st.markdown(
+        f'<style>.jbl-hero{{background-image:url("data:image/png;base64,{_estadio_b64}");'
+        f'background-size:cover;background-position:center;}}</style>',
+        unsafe_allow_html=True,
+    )
+
 st.markdown(
-    f'<div style="background:var(--bg-tarjeta);border:1px solid var(--borde);border-radius:8px;'
-    f'padding:10px 18px;margin-bottom:10px;display:flex;align-items:center;'
-    f'justify-content:space-between;">'
-    f'<div style="font-size:17px;font-weight:800;color:var(--acento-morado);letter-spacing:.2px;">'
-    f'📊 JhonBet <span style="color:var(--acento-dorado);">Lab</span></div>'
-    f'<div style="display:flex;align-items:center;gap:16px;font-size:13px;color:var(--texto-apagado);">'
-    f'<span title="Estado de conexión">🟢 Conectado</span>'
-    f'<span title="Ayuda">❓</span>'
-    f'<span title="Idioma">🌐 ES</span>'
-    f'<span title="Modo oscuro / claro">{_modo_icono}</span>'
-    f'<span title="Salir" style="color:#dc2626;">⏻</span>'
-    f'</div></div>',
+    f'<div class="jbl-hero" style="margin:0 -3rem 20px;width:calc(100% + 6rem);min-height:320px;'
+    f'position:relative;overflow:hidden;background-color:#0F172A;">'
+    # gradient overlay
+    f'<div style="position:absolute;inset:0;'
+    f'background:linear-gradient(90deg,rgba(8,12,25,0.93) 0%,rgba(8,12,25,0.68) 45%,rgba(8,12,25,0.12) 100%);"></div>'
+    # content
+    f'<div style="position:relative;z-index:2;padding:56px 52px 52px;max-width:600px;">'
+    # BETVISION AI title
+    f'<div style="font-family:Poppins,sans-serif;font-size:40px;font-weight:700;color:#ffffff;'
+    f'line-height:1.1;letter-spacing:-0.5px;margin-bottom:10px;">'
+    f'BETVISION <span style="color:#F59E0B;">AI</span></div>'
+    # subtitle
+    f'<div style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.5);'
+    f'letter-spacing:3.5px;text-transform:uppercase;margin-bottom:14px;">'
+    f'PROFESSIONAL FOOTBALL ANALYTICS</div>'
+    # tagline
+    f'<div style="font-size:16px;font-style:italic;color:rgba(255,255,255,0.78);margin-bottom:32px;">'
+    f'Analyze. Predict. Win.</div>'
+    f'</div>'
+    f'</div>',
     unsafe_allow_html=True,
 )
+
+_hero_c1, _hero_c2, _hero_c3 = st.columns([1, 1, 5])
+with _hero_c1:
+    if st.button("⚽ Analizar con IA", key="hero_btn_ia", use_container_width=True):
+        st.session_state["pagina_activa"] = "Claude AI"
+        st.rerun()
+with _hero_c2:
+    if st.button("📊 Ver Dashboard", key="hero_btn_dashboard", use_container_width=True):
+        st.session_state["pagina_activa"] = "Análisis de Partidos"
+        st.rerun()
+
+# ─────────────────────────────────────────────────────────────────────
+#  KPI CARDS — virtual_bets.csv (ROI, Beneficio, Win Rate, Yield, Total, Pérdidas)
+# ─────────────────────────────────────────────────────────────────────
+_kpi_cards_virtual()
 
 # ─────────────────────────────────────────────────────────────────────
 #  BARRA SUPERIOR — 6 métricas con sparklines
@@ -1335,3 +1751,15 @@ elif pagina == "Historial Dominada":
                 unsafe_allow_html=True)
     mostrar_hist_dom()
     st.markdown('</div>', unsafe_allow_html=True)
+
+elif pagina == "Configuración":
+    st.markdown(
+        '<div style="max-width:520px;margin:60px auto;text-align:center;">'
+        '<div style="font-size:48px;margin-bottom:16px;">⚙️</div>'
+        '<div style="font-size:22px;font-weight:700;color:var(--texto);margin-bottom:8px;">'
+        'Configuración</div>'
+        '<div style="font-size:14px;color:var(--texto-apagado);">'
+        'Próximamente — ajustes de cuenta, preferencias y notificaciones.</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )

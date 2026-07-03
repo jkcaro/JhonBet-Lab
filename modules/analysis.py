@@ -712,7 +712,9 @@ def mostrar():
         _mensaje_partido_manual()
         return
 
-    liga_elegida = st.selectbox("Liga:", ligas_disponibles, key="sel_liga")
+    _col_liga, _col_partido = st.columns(2)
+    with _col_liga:
+        liga_elegida = st.selectbox("Liga:", ligas_disponibles, key="sel_liga")
 
     # Partidos de la liga seleccionada con icono de fuente
     df_liga = df_partidos[df_partidos["liga"] == liga_elegida].copy()
@@ -734,7 +736,8 @@ def mostrar():
         _mensaje_partido_manual()
         return
 
-    display_elegido = st.selectbox("Partido:", opciones_display, key="sel_partido")
+    with _col_partido:
+        display_elegido = st.selectbox("Partido:", opciones_display, key="sel_partido")
 
     # Recuperar el nombre real del partido (sin icono) a partir de la selección
     try:
@@ -743,7 +746,7 @@ def mostrar():
     except (ValueError, IndexError):
         partido_elegido = display_elegido
 
-    analizar = st.button("Analizar Partido", key="btn_analizar", use_container_width=True)
+    analizar = st.button("🧠 Analizar con IA", key="btn_analizar", use_container_width=True)
 
     # Guardar selección en estado de sesión para los otros módulos
     if analizar:

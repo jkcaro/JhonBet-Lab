@@ -140,14 +140,82 @@ def _cancha_b64() -> str:
         return ""
 
 
+# ── Formación 4-3-3 (coordenadas en canvas 700×400) ──────────────────────────
+
+_FORMACION_L: list[tuple[int, int, int]] = [
+    (45,  200, 1),
+    (155, 70,  2), (155, 152, 3), (155, 248, 4), (155, 330, 5),
+    (265, 105, 6), (265, 200,  7), (265, 295,  8),
+    (375, 70,  9), (375, 200, 10), (375, 330, 11),
+]
+_FORMACION_V: list[tuple[int, int, int]] = [
+    (655, 200, 1),
+    (545, 70,  2), (545, 152, 3), (545, 248, 4), (545, 330, 5),
+    (435, 105, 6), (435, 200,  7), (435, 295,  8),
+    (325, 70,  9), (325, 200, 10), (325, 330, 11),
+]
+_PREFIJOS_SKIP = {"FC", "CF", "SD", "CD", "UD", "RC", "AC", "AS", "CA", "RB", "SC", "PFC"}
+
+
+def _abr_equipo(nombre: str) -> str:
+    """3 letras del nombre del equipo (primera palabra significativa ≥3 chars)."""
+    n = nombre.strip()
+    palabras = [p for p in n.split() if p.upper() not in _PREFIJOS_SKIP and len(p) >= 3]
+    if palabras:
+        return palabras[0][:3].upper()
+    return n[:3].upper() if len(n) >= 3 else "???"
+
+
+def _figura_svg(x: int, y: int, num: int, label: str,
+                col_kit: str, col_legs: str, col_num: str) -> str:
+    """Figura estilo Subbuteo (36×56 viewBox) centrada en (x, y)."""
+    tx, ty = x - 18, y - 28
+    return (
+        f'<div style="position:absolute;left:{tx}px;top:{ty}px;'
+        f'width:36px;height:56px;pointer-events:none;">'
+        f'<svg width="36" height="56" viewBox="0 0 36 56" '
+        f'xmlns="http://www.w3.org/2000/svg" overflow="visible">'
+        # peana triple (sombra + disco oscuro + reflejo)
+        f'<ellipse cx="18" cy="49" rx="15" ry="5"   fill="#000" opacity=".35"/>'
+        f'<ellipse cx="18" cy="47" rx="14" ry="4.5" fill="#111827"/>'
+        f'<ellipse cx="18" cy="46" rx="12" ry="3"   fill="#2d3748"/>'
+        # piernas
+        f'<rect x="10" y="31" width="6"  height="15" rx="3" fill="{col_legs}"/>'
+        f'<rect x="20" y="31" width="6"  height="15" rx="3" fill="{col_legs}"/>'
+        # cuerpo / camiseta
+        f'<rect x="9"  y="14" width="18" height="19" rx="4" fill="{col_kit}"/>'
+        # brazos
+        f'<rect x="3"  y="17" width="7"  height="5"  rx="2.5" fill="{col_kit}"/>'
+        f'<rect x="26" y="17" width="7"  height="5"  rx="2.5" fill="{col_kit}"/>'
+        # número en pecho
+        f'<text x="18" y="27" text-anchor="middle" dominant-baseline="middle" '
+        f'font-family="Arial,sans-serif" font-size="9" font-weight="900" '
+        f'fill="{col_num}">{num}</text>'
+        # cabeza
+        f'<circle cx="18" cy="8" r="7.5" fill="#f5cba7"/>'
+        # pelo (casquete)
+        f'<path d="M10.5,8 Q10.5,0.5 18,0.5 Q25.5,0.5 25.5,8 '
+        f'Q25.5,4.5 18,4 Q10.5,4.5 10.5,8 Z" fill="#2c1810"/>'
+        # abreviatura del equipo
+        f'<text x="18" y="55" text-anchor="middle" dominant-baseline="middle" '
+        f'font-family="Arial,sans-serif" font-size="7" font-weight="700" '
+        f'fill="#fff">{label}</text>'
+        f'</svg></div>'
+    )
+
+
 def _panel_cancha_html(
     nombre_l: str, nombre_v: str,
     goles_l: int, goles_v: int,
     pos_l: int, pos_v: int,
     tiro_l: int, tiro_v: int,
+    atq_l: int, atq_v: int,
+    cor_l: int, cor_v: int,
+    fal_l: int, fal_v: int,
+    minuto: int,
     b64: str,
 ) -> str:
-    """HTML completo del panel de cancha con overlays CSS (para components.html)."""
+    """Panel 700×400 con formación 4-3-3 estilo Subbuteo sobre imagen de cancha."""
     if not b64:
         return ""
 
@@ -158,18 +226,27 @@ def _panel_cancha_html(
         pos_l_pct = round(pos_l / pos_total * 100)
         pos_v_pct = 100 - pos_l_pct
 
-    nl = nombre_l[:13]
-    nv = nombre_v[:13]
+    abr_l = _abr_equipo(nombre_l)
+    abr_v = _abr_equipo(nombre_v)
+
+    figs_l = "".join(
+        _figura_svg(x, y, n, abr_l, "#f5a623", "#c48010", "#0d3b4f")
+        for x, y, n in _FORMACION_L
+    )
+    figs_v = "".join(
+        _figura_svg(x, y, n, abr_v, "#e74c3c", "#c0392b", "#ffffff")
+        for x, y, n in _FORMACION_V
+    )
 
     return f"""<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <style>
-*{{box-sizing:border-box;margin:0;padding:0}}
-body{{background:transparent;overflow:hidden}}
-.wrap{{
-    position:relative;width:400px;max-width:100%;height:250px;
+html,body{{margin:0;padding:0;background:transparent;overflow:hidden}}
+#scaler{{width:100%;overflow:hidden}}
+#canvas{{
+    position:relative;width:700px;height:400px;
     border-radius:10px;overflow:hidden;font-family:Inter,sans-serif;
 }}
 .bg{{
@@ -177,71 +254,65 @@ body{{background:transparent;overflow:hidden}}
     background-image:url('data:image/png;base64,{b64}');
     background-size:cover;background-position:center;
 }}
-.dim{{position:absolute;inset:0;background:rgba(0,0,0,.20)}}
+.dim{{position:absolute;inset:0;background:rgba(0,0,0,.22)}}
 .score{{
-    position:absolute;top:10px;left:50%;transform:translateX(-50%);
-    background:rgba(0,0,0,.72);border-radius:8px;padding:4px 16px;
-    color:#fff;font-size:20px;font-weight:900;letter-spacing:2px;white-space:nowrap;
+    position:absolute;top:12px;left:50%;transform:translateX(-50%);
+    background:rgba(0,0,0,.75);border-radius:8px;padding:5px 18px;
+    color:#fff;font-size:22px;font-weight:900;letter-spacing:2px;white-space:nowrap;
 }}
-.local{{
-    position:absolute;left:14px;top:50%;transform:translateY(-50%);text-align:center;
+.score-min{{font-size:14px;opacity:.8;letter-spacing:0;font-weight:600}}
+.badge{{
+    position:absolute;background:rgba(0,0,0,.65);border-radius:3px;
+    padding:2px 6px;color:#fff;font-size:11px;font-weight:700;
+    white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.8);
 }}
-.visit{{
-    position:absolute;right:14px;top:50%;transform:translateY(-50%);text-align:center;
-}}
-.circ-l,.circ-v{{
-    width:52px;height:52px;border-radius:50%;
-    border:3px solid rgba(255,255,255,.6);
-    display:flex;align-items:center;justify-content:center;
-    font-size:22px;font-weight:900;color:#fff;margin:0 auto;
-}}
-.circ-l{{background:#16a34a;box-shadow:0 0 14px rgba(22,163,74,.65)}}
-.circ-v{{background:#dc2626;box-shadow:0 0 14px rgba(220,38,38,.65)}}
-.tnm{{
-    color:#fff;font-size:10px;font-weight:700;
-    text-shadow:0 1px 3px rgba(0,0,0,.9);margin-top:5px;
-    max-width:76px;line-height:1.2;
-}}
-.lbl{{
-    position:absolute;top:10px;
-    color:#fff;font-size:9px;font-weight:700;
-    letter-spacing:.8px;text-transform:uppercase;
-    text-shadow:0 1px 3px rgba(0,0,0,.9);opacity:.85;
-}}
-.lbl-l{{left:14px}}.lbl-v{{right:14px}}
 .pos-bar{{position:absolute;bottom:0;left:0;right:0;height:26px;display:flex}}
 .pos-l{{
-    width:{pos_l_pct}%;background:rgba(22,163,74,.80);
+    width:{pos_l_pct}%;background:rgba(22,163,74,.82);
     display:flex;align-items:center;justify-content:center;
-    font-size:11px;font-weight:800;color:#fff;
+    font-size:12px;font-weight:800;color:#fff;
 }}
 .pos-v{{
-    width:{pos_v_pct}%;background:rgba(37,99,235,.80);
+    width:{pos_v_pct}%;background:rgba(37,99,235,.82);
     display:flex;align-items:center;justify-content:center;
-    font-size:11px;font-weight:800;color:#fff;
+    font-size:12px;font-weight:800;color:#fff;
 }}
 </style>
 </head>
 <body>
-<div class="wrap">
+<div id="scaler"><div id="canvas">
   <div class="bg"></div>
   <div class="dim"></div>
-  <div class="lbl lbl-l">Tiros</div>
-  <div class="lbl lbl-v">Tiros</div>
-  <div class="score">{goles_l} &mdash; {goles_v}</div>
-  <div class="local">
-    <div class="circ-l">{tiro_l}</div>
-    <div class="tnm">{nl}</div>
-  </div>
-  <div class="visit">
-    <div class="circ-v">{tiro_v}</div>
-    <div class="tnm">{nv}</div>
-  </div>
+  <div class="score">{goles_l} &mdash; {goles_v} <span class="score-min">| {minuto}'</span></div>
+  <div class="badge" style="top:50px;left:14px;">🟨 {fal_l} faltas</div>
+  <div class="badge" style="top:50px;right:14px;">🟨 {fal_v} faltas</div>
+  <div class="badge" style="top:14px;left:110px;">🎯 {tiro_l} tiros</div>
+  <div class="badge" style="top:14px;right:110px;">🎯 {tiro_v} tiros</div>
+  <div class="badge" style="top:50px;left:210px;">⚡ {atq_l} ataques</div>
+  <div class="badge" style="top:50px;right:210px;">⚡ {atq_v} ataques</div>
+  <div class="badge" style="bottom:30px;left:8px;">⚽ {cor_l}</div>
+  <div class="badge" style="bottom:30px;right:8px;">⚽ {cor_v}</div>
+  {figs_l}
+  {figs_v}
   <div class="pos-bar">
     <div class="pos-l">{pos_l_pct}%</div>
     <div class="pos-v">{pos_v_pct}%</div>
   </div>
-</div>
+</div></div>
+<script>
+(function(){{
+  var o=document.getElementById('scaler');
+  var c=document.getElementById('canvas');
+  function fit(){{
+    var s=o.clientWidth/700;
+    c.style.transform='scale('+s+')';
+    c.style.transformOrigin='top left';
+    o.style.height=(400*s)+'px';
+  }}
+  fit();
+  window.addEventListener('resize',fit);
+}})();
+</script>
 </body>
 </html>"""
 
@@ -624,30 +695,19 @@ def mostrar() -> None:
     # legibles también en el formulario, antes de tener resultados.
     st.markdown(_CSS_VIVO, unsafe_allow_html=True)
 
-    # ── Partido activo ────────────────────────────────────────────────────────
-    partido = st.session_state.get("partido_activo", "")
+    # ── Partido (editable) ────────────────────────────────────────────────────
     liga    = st.session_state.get("liga_activa", "")
+    partido = st.text_input(
+        "Partido",
+        value=st.session_state.get("partido_activo", ""),
+        placeholder="Ej: España vs Francia",
+        key="vivo_partido",
+    )
 
-    if partido:
-        st.markdown(
-            f'<div style="font-size:13px;color:#5a7a9a;margin-bottom:10px;">'
-            f'Partido cargado: <span style="color:#0d3b4f;font-weight:700;">'
-            f'{partido}</span>'
-            f'&nbsp;·&nbsp;<span style="color:#0d3b4f;">{liga}</span></div>',
-            unsafe_allow_html=True,
-        )
-
-        _datos_previa = _datos_previa_sesion()
-        if _datos_previa:
-            with st.expander("🔍 Ver datos del partido", expanded=False):
-                st.markdown(panel_info_partido_html(_datos_previa), unsafe_allow_html=True)
-    else:
-        st.info("Selecciona y analiza un partido primero. "
-                "También puedes introducir el nombre manualmente.")
-        partido = st.text_input(
-            "Partido (Ej: Real Madrid vs Barcelona)",
-            key="vivo_partido_manual",
-        )
+    _datos_previa = _datos_previa_sesion()
+    if _datos_previa:
+        with st.expander("🔍 Ver datos del partido", expanded=False):
+            st.markdown(panel_info_partido_html(_datos_previa), unsafe_allow_html=True)
 
     # ── Mercado ───────────────────────────────────────────────────────────────
     mercado = st.selectbox("Mercado in-play:", MERCADOS_VIVO, key="vivo_mercado")
@@ -720,9 +780,13 @@ def mostrar() -> None:
                     int(goles_l), int(goles_v),
                     int(pos_l), int(pos_v),
                     int(tiro_l), int(tiro_v),
+                    int(atq_l), int(atq_v),
+                    int(cor_l), int(cor_v),
+                    int(fal_l), int(fal_v),
+                    int(minuto),
                     _b64,
                 ),
-                height=265,
+                height=415,
                 scrolling=False,
             )
 

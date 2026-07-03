@@ -668,15 +668,16 @@ DEOP_TEXTO    = "#5a7a9a"
 # fondo). "texto": color de texto de alto contraste sobre "fondo" — NO usar
 # "petroleo" para texto, en Codere/Oscuro sería oscuro sobre fondo oscuro.
 PALETAS: dict[str, dict[str, str]] = {
-    "DeOP Claro":  {"petroleo": "#0d3b4f", "dorado": "#f5a623", "fondo": "#ffffff", "texto": "#0d3b4f"},
-    "DeOP Oscuro": {"petroleo": "#0d3b4f", "dorado": "#f5a623", "fondo": "#1a1a2e", "texto": "#ffffff"},
-    "Codere":      {"petroleo": "#00e676", "dorado": "#00e676", "fondo": "#12121e", "texto": "#ffffff"},
+    "DeOP Claro":  {"petroleo": "#0d3b4f", "dorado": "#f5a623", "fondo": "#ffffff",  "texto": "#0d3b4f"},
+    "DeOP Oscuro": {"petroleo": "#0d3b4f", "dorado": "#f5a623", "fondo": "#1a1a2e",  "texto": "#ffffff"},
+    "Codere":      {"petroleo": "#00e676", "dorado": "#00e676", "fondo": "#12121e",  "texto": "#ffffff"},
+    "BetVision":   {"petroleo": "#2563EB", "dorado": "#F59E0B", "fondo": "#1E293B",  "texto": "#E2E8F0"},
 }
 
 
 def _paleta_activa() -> dict[str, str]:
-    """Paleta del tema visual activo (fallback DeOP Claro si no hay sesión)."""
-    return PALETAS.get(st.session_state.get("tema_activo", "DeOP Claro"), PALETAS["DeOP Claro"])
+    """Paleta del tema visual activo (fallback BetVision si no hay sesión)."""
+    return PALETAS.get(st.session_state.get("tema_activo", "BetVision"), PALETAS["BetVision"])
 
 
 def gauge_donut_gris(valor: float, titulo: str, color: str = DEOP_DORADO,

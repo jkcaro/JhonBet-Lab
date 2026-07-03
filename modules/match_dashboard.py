@@ -93,76 +93,66 @@ def _calcular_4_mercados(datos: dict) -> dict:
 def mostrar() -> None:
     """Renderiza la página 'Análisis de Partidos' con el layout DeOP Connect."""
 
-    # ── CSS: expander/selectbox/botón del formulario de selección — 36px máx ──
-    # Scopeado por key al expander "Seleccionar partido" (no al expander
-    # "⚙️ Fuentes de datos" del sidebar ni a otros botones de la página,
-    # como "Analizar con Claude AI").
-    st.markdown(
-        """
+    st.markdown("""
 <style>
-/* Header del expander (el banner negro "🔍 Seleccionar partido") */
-.st-key-expander_seleccionar_partido summary {
-    min-height: 36px !important;
-    max-height: 36px !important;
-    height: 36px !important;
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
+/* ── Tarjeta selector de partido ── */
+.st-key-selector_partido_card {
+    background: var(--bg-tarjeta, #1E293B);
+    border: 1px solid var(--borde, #334155);
+    border-radius: 10px;
+    padding: 18px 20px 16px;
+    margin-bottom: 16px;
 }
-
-/* Selectbox Liga / Partido — ~28px (reducido desde 36px) */
-.st-key-expander_seleccionar_partido [data-testid="stSelectbox"] [data-baseweb="select"] > div {
-    min-height: 28px !important;
-    max-height: 28px !important;
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
+/* Título de la tarjeta */
+.selector-titulo {
+    font-family: "Poppins", sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--texto, #E2E8F0);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
-.st-key-expander_seleccionar_partido [data-testid="stSelectbox"] [data-baseweb="select"] > div > div {
-    padding: 1px 8px !important;
-}
-
-/* Botón "Analizar Partido" */
-.st-key-expander_seleccionar_partido [data-testid="stButton"] > button {
-    height: 36px !important;
-    min-height: 36px !important;
-    max-height: 36px !important;
-    padding: 3px 16px !important;
-    font-size: 13px !important;
+/* Botón "Analizar con IA" — azul #2563EB */
+.st-key-selector_partido_card [data-testid="stButton"] > button {
+    background: #2563EB !important;
+    color: #ffffff !important;
+    border: none !important;
+    font-size: 14px !important;
     font-weight: 700 !important;
+    height: 42px !important;
+    border-radius: 8px !important;
+    transition: background .18s !important;
 }
-
-/* Espaciado entre bloques (Liga → Partido → botón) — de 16px a 4px */
-.st-key-expander_seleccionar_partido div[data-testid="stVerticalBlock"] {
-    gap: 4px !important;
+.st-key-selector_partido_card [data-testid="stButton"] > button:hover {
+    background: #1D4ED8 !important;
+    opacity: 1 !important;
 }
-
-/* Label pegado al control — de 4px a 1px */
-.st-key-expander_seleccionar_partido [data-testid="stWidgetLabel"] {
-    margin-bottom: 1px !important;
-}
-
-/* Labels legibles sobre fondo claro (p. ej. "Liga:", "Partido:", "Forma reciente...") */
-[data-testid="stWidgetLabel"] p {
-    color: #0d3b4f !important;
+/* Labels de selectbox */
+.st-key-selector_partido_card [data-testid="stWidgetLabel"] p {
+    font-size: 11px !important;
     font-weight: 600 !important;
+    color: var(--texto-apagado, #94A3B8) !important;
+    text-transform: uppercase !important;
+    letter-spacing: .6px !important;
 }
 </style>
-""",
-        unsafe_allow_html=True,
-    )
+""", unsafe_allow_html=True)
 
-    with st.expander(
-        "🔍 Seleccionar partido",
-        expanded=not bool(st.session_state.get("analisis_listo")),
-        key="expander_seleccionar_partido",
-    ):
+    with st.container(key="selector_partido_card"):
+        st.markdown(
+            '<div class="selector-titulo">🔍 Seleccionar partido para analizar</div>',
+            unsafe_allow_html=True,
+        )
         _analysis_mod.mostrar()
 
     datos = _ca._datos_desde_sesion()
 
     if not datos:
         st.markdown(
-            '<div style="color:#8aaa99;font-size:13px;padding:12px 0;">'
-            'Selecciona un partido arriba y pulsa <b>Analizar Partido</b> '
+            '<div style="color:var(--texto-apagado,#94A3B8);font-size:13px;padding:8px 0;">'
+            'Selecciona liga y partido arriba y pulsa <b>🧠 Analizar con IA</b> '
             'para activar el dashboard.</div>',
             unsafe_allow_html=True,
         )

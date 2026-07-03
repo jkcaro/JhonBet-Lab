@@ -176,6 +176,11 @@ html, body,
     color: #ffffff !important;
     border-color: {verde}88 !important;
 }}
+
+/* ── Tipografía base ── */
+body, p, label, input, button, textarea, select {{
+    font-family: var(--font-texto);
+}}
 </style>"""
 
 
