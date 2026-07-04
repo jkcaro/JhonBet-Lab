@@ -12,13 +12,22 @@ Para iniciar:  streamlit run app.py
 """
 
 import json          # Para leer/escribir el archivo de configuración (config.json)
+import logging
 import os
 import re
 import sys
+import traceback
 from datetime import date as _date_today
 from pathlib import Path
 
 os.makedirs(Path(__file__).parent / "data", exist_ok=True)
+
+logging.basicConfig(
+    filename=str(Path.home() / "betvision_debug.log"),
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    force=True,
+)
 
 # Añade la carpeta raíz del proyecto al path de Python
 # para que los imports como "from modules.analysis import ..." funcionen correctamente
@@ -611,7 +620,7 @@ section[data-testid="stMain"]{{padding:0!important;}}
     color:#64748B!important;font-size:13px!important;font-family:Inter,sans-serif!important;
 }}
 /* ── Botón Iniciar sesión ── */
-[data-testid="stFormSubmitButton"]>button{{
+.st-key-_btn_login_gate>button{{
     background:linear-gradient(135deg,#2563EB,#1D4ED8)!important;
     color:#fff!important;border:none!important;border-radius:10px!important;
     height:48px!important;font-size:15px!important;font-weight:600!important;
@@ -619,7 +628,7 @@ section[data-testid="stMain"]{{padding:0!important;}}
     letter-spacing:.3px!important;cursor:pointer!important;
     font-family:Inter,sans-serif!important;transition:opacity .15s!important;
 }}
-[data-testid="stFormSubmitButton"]>button:hover{{opacity:.88!important;}}
+.st-key-_btn_login_gate>button:hover{{opacity:.88!important;}}
 /* ── Imagen panel derecho ── */
 {_img_css}
 .login-panel-right{{min-height:100vh;width:100%;position:relative;}}
@@ -645,14 +654,14 @@ section[data-testid="stMain"]{{padding:0!important;}}
     with col_izq:
         # Logo
         st.markdown(
-            '<div style="display:flex;align-items:center;gap:12px;margin-bottom:40px;">'
-            '<span style="font-size:32px;line-height:1;">⚽</span>'
+            '<div style="display:flex;align-items:center;gap:18px;margin-bottom:56px;">'
+            '<span style="font-size:52px;line-height:1;">⚽</span>'
             '<div>'
-            '<div style="font-family:Poppins,sans-serif;font-size:20px;font-weight:700;'
-            'color:#fff;line-height:1.1;">'
+            '<div style="font-family:Poppins,sans-serif;font-size:46px;font-weight:700;'
+            'color:#fff;line-height:1.05;letter-spacing:-1px;">'
             'BETVISION <span style="color:#F59E0B;">AI</span></div>'
-            '<div style="font-size:9px;color:rgba(255,255,255,.38);letter-spacing:2.5px;'
-            'text-transform:uppercase;margin-top:3px;">Professional Analytics</div>'
+            '<div style="font-size:13px;color:rgba(255,255,255,.4);letter-spacing:3.5px;'
+            'text-transform:uppercase;margin-top:6px;">Professional Analytics</div>'
             '</div>'
             '</div>',
             unsafe_allow_html=True,
@@ -660,19 +669,21 @@ section[data-testid="stMain"]{{padding:0!important;}}
 
         # Encabezado
         st.markdown(
-            '<h1 style="font-family:Poppins,sans-serif;font-size:28px;font-weight:700;'
-            'color:#F1F5F9;margin:0 0 6px;line-height:1.2;">Bienvenido de vuelta</h1>'
-            '<p style="font-size:14px;color:#64748B;margin:0 0 28px;'
+            '<h1 style="font-family:Poppins,sans-serif;font-size:36px;font-weight:700;'
+            'color:#F1F5F9;margin:0 0 12px;line-height:1.2;">Bienvenido de vuelta</h1>'
+            '<p style="font-size:18px;color:#64748B;margin:0 0 36px;'
             'font-family:Inter,sans-serif;">Inicia sesión en tu cuenta</p>',
             unsafe_allow_html=True,
         )
 
         # Formulario
-        with st.form("_form_login_gate", clear_on_submit=False):
-            _li_email    = st.text_input("Correo / Usuario", placeholder="jhon@betvision.com")
-            _li_password = st.text_input("Contraseña", type="password", placeholder="••••••••")
-            _li_remember = st.checkbox("Recordarme")
-            _li_submit   = st.form_submit_button("Iniciar sesión", use_container_width=True)
+        _li_email    = st.text_input("Correo / Usuario", placeholder="jhon@betvision.com",
+                                     key="_inp_email_gate")
+        _li_password = st.text_input("Contraseña", type="password", placeholder="••••••••",
+                                     key="_inp_pw_gate")
+        _li_remember = st.checkbox("Recordarme", key="_chk_remember_gate")
+        _li_submit   = st.button("Iniciar sesión", use_container_width=True,
+                                 key="_btn_login_gate", type="primary")
 
         # Botones sociales decorativos (deshabilitados)
         st.markdown("""
@@ -720,10 +731,15 @@ section[data-testid="stMain"]{{padding:0!important;}}
                 _email  = st.secrets["auth"]["email"]
                 _stored = st.secrets["auth"]["hashed_password"].encode()
                 _typed  = _li_email.strip().lower()
+                logging.info("LOGIN: typed=%r uname=%r email=%r match=%s",
+                             _typed, _uname.lower(), _email.lower(),
+                             _typed in (_uname.lower(), _email.lower()))
                 if _typed in (_uname.lower(), _email.lower()):
                     _login_ok = _bcrypt.checkpw(_li_password.encode(), _stored)
+                    logging.info("LOGIN: bcrypt_ok=%s stored_prefix=%r",
+                                 _login_ok, _stored[:10])
             except Exception:
-                pass
+                logging.exception("LOGIN: bcrypt block exception")
 
             if _login_ok:
                 # Claves que stauth 0.4.x espera en session_state
@@ -740,8 +756,9 @@ section[data-testid="stMain"]{{padding:0!important;}}
                         if not _li_remember:
                             _authenticator.cookie_controller.cookie_model.cookie_expiry_days = 0
                         _authenticator.cookie_controller.set_cookie()
+                        logging.info("LOGIN: set_cookie OK")
                     except Exception:
-                        pass
+                        logging.exception("LOGIN: set_cookie FAILED")
                 st.rerun()
             else:
                 if _li_email or _li_password:
@@ -787,11 +804,17 @@ try:
         cookie_name=st.secrets["cookie"]["name"],
         cookie_key=st.secrets["cookie"]["key"],
         cookie_expiry_days=float(st.secrets["cookie"]["expiry_days"]),
+        login_sleep_time=0,  # stauth por defecto duerme 0.7 s en cada login() — lo eliminamos
     )
-    # Intentar restaurar sesión desde cookie (no renderiza formulario)
-    _authenticator.login(location='unrendered')
-except Exception:
-    pass  # bcrypt directo como fallback si stauth falla
+    # Solo restaurar desde cookie si no estamos ya autenticados en esta sesión.
+    # stauth.login() sobreescribiría authentication_status a None si no hay cookie,
+    # destruyendo el True que el formulario manual ya estableció en el rerun anterior.
+    if st.session_state.get("authentication_status") is not True:
+        _authenticator.login(location='unrendered')
+
+except Exception as _auth_exc:
+    st.exception(_auth_exc)
+    st.stop()
 
 if st.session_state.get("authentication_status") is not True:
     _render_login_page()   # → inyecta CSS + UI + lógica, termina con st.stop()
@@ -907,19 +930,24 @@ body, p, label, input, select, textarea, button,
     width: 100% !important;
     transition: background 0.15s ease, color 0.15s ease !important;
 }
-/* Forzar alineación izquierda en el contenido interno del botón */
-[data-testid="stSidebar"] .stButton > button [data-testid="stButtonContent"] {
+/* div interno (stMarkdownContainer en Streamlit 1.58) */
+[data-testid="stSidebar"] .stButton > button > div {
+    text-align: left !important;
+    margin: 0 !important;
+    width: auto !important;
+}
+[data-testid="stSidebar"] .stButton > button > div[data-testid="stMarkdownContainer"] {
     display: flex !important;
     align-items: center !important;
     justify-content: flex-start !important;
     text-align: left !important;
-    width: 100% !important;
+    width: auto !important;
+    margin: 0 !important;
 }
 [data-testid="stSidebar"] .stButton > button p {
     text-align: left !important;
     margin: 0 !important;
     line-height: 1 !important;
-    width: 100% !important;
 }
 [data-testid="stSidebar"] .stButton > button:hover {
     background: rgba(255,255,255,0.07) !important;
