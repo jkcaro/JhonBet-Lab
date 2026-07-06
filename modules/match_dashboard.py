@@ -48,11 +48,17 @@ def _tarjeta_de(mercado: str, resultado: dict) -> str:
     elif "Más de 1.5" in mercado or "Mas de 1.5" in mercado:
         titulo = "Más 1.5 Goles"
         p_modelo = datos_m.get("mas15_modelo", {}).get("p_mas15", "—")
-        valor    = f"P: {p_modelo} | Edge: {punt.get('edge', 0.0):+.1f}%"
+        if punt.get("sin_cuota"):
+            valor = f"P: {p_modelo} | Sin cuota"
+        else:
+            valor = f"P: {p_modelo} | Edge: {punt.get('edge', 0.0):+.1f}%"
     else:
         titulo = "Menos 1.5 Goles"
         p_modelo = datos_m.get("menos15_modelo", {}).get("p_menos15", "—")
-        valor    = f"P: {p_modelo} | Edge: {punt.get('edge', 0.0):+.1f}%"
+        if punt.get("sin_cuota"):
+            valor = f"P: {p_modelo} | Sin cuota"
+        else:
+            valor = f"P: {p_modelo} | Edge: {punt.get('edge', 0.0):+.1f}%"
 
     return tarjeta_veredicto_html(titulo, valor, estado)
 

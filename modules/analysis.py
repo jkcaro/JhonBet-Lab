@@ -210,6 +210,7 @@ def _guardar_partido_manual(
     btts_local_5: int | None = None, btts_visit_5: int | None = None,
     elo_local: float | None = None, elo_visit: float | None = None,
     motivacion: str = "", ultimo_partido: str = "No",
+    cuota_o15: float = 0.0, cuota_u15: float = 0.0,
 ) -> None:
     """
     Guarda el partido manual.
@@ -272,6 +273,13 @@ def _guardar_partido_manual(
     if cuota_1t_visitante > 1.01:
         filas.append({"partido": nombre, "mercado": "Resultado 1T", "resultado": "Visitante",
                       "codere": cuota_1t_visitante, "bet365": cuota_1t_visitante, "betfair": cuota_1t_visitante})
+    # Over / Under 1.5 Goles
+    if cuota_o15 > 1.01:
+        filas.append({"partido": nombre, "mercado": "Over/Under 1.5", "resultado": "Over 1.5",
+                      "codere": cuota_o15, "bet365": cuota_o15, "betfair": cuota_o15})
+    if cuota_u15 > 1.01:
+        filas.append({"partido": nombre, "mercado": "Over/Under 1.5", "resultado": "Under 1.5",
+                      "codere": cuota_u15, "bet365": cuota_u15, "betfair": cuota_u15})
 
     pd.concat([pd.DataFrame(filas), df_c], ignore_index=True).to_csv(RUTA_CUOTAS, index=False)
     st.cache_data.clear()
@@ -538,6 +546,21 @@ div[data-testid="stDialog"] [data-testid="stHeading"] {
                 help="Deja en 0 si no tienes esta cuota",
             )
 
+        _sec("Cuotas Over / Under 1.5 Goles", opcional=True)
+        col_o15, col_u15 = st.columns(2)
+        with col_o15:
+            cuota_o15 = st.number_input(
+                "Over 1.5", min_value=0.0, max_value=100.0,
+                value=0.0, step=0.05, key="pm_o15",
+                help="Cuota Over 1.5 goles. Deja en 0 si no tienes esta cuota",
+            )
+        with col_u15:
+            cuota_u15 = st.number_input(
+                "Under 1.5", min_value=0.0, max_value=100.0,
+                value=0.0, step=0.05, key="pm_u15",
+                help="Cuota Under 1.5 goles. Deja en 0 si no tienes esta cuota",
+            )
+
         _sec("Forma últimos 5 · ELO (BeSoccer)", opcional=True)
         col_bl5, col_bv5, col_el, col_ev = st.columns(4)
         with col_bl5:
@@ -600,6 +623,8 @@ div[data-testid="stDialog"] [data-testid="stHeading"] {
     cuota_1t_local    = st.session_state.get("pm_1t_local",      0.0)
     cuota_1t_empate   = st.session_state.get("pm_1t_empate",     0.0)
     cuota_1t_visitante= st.session_state.get("pm_1t_visitante",  0.0)
+    cuota_o15         = st.session_state.get("pm_o15",           0.0)
+    cuota_u15         = st.session_state.get("pm_u15",           0.0)
     btts_local_5      = st.session_state.get("pm_btts_l5",       None)
     btts_visit_5      = st.session_state.get("pm_btts_v5",       None)
     elo_local         = st.session_state.get("pm_elo_l",         None)
@@ -634,11 +659,13 @@ div[data-testid="stDialog"] [data-testid="stHeading"] {
                 cuota_1t_local, cuota_1t_empate, cuota_1t_visitante,
                 btts_local_5, btts_visit_5, elo_local, elo_visit,
                 motivacion, ultimo_partido,
+                cuota_o15=cuota_o15, cuota_u15=cuota_u15,
             )
             nombre = f"{equipo_local.strip()} vs {equipo_visitante.strip()}"
             for k in ("pm_local", "pm_visitante", "pm_liga", "pm_cl", "pm_ce", "pm_cv",
                       "pm_xgl", "pm_xgv", "pm_btts_si", "pm_btts_no",
                       "pm_1t_local", "pm_1t_empate", "pm_1t_visitante",
+                      "pm_o15", "pm_u15",
                       "pm_btts_l5", "pm_btts_v5", "pm_elo_l", "pm_elo_v",
                       "pm_motivacion", "pm_ultimo_partido",
                       "pm_prefill", "pm_resultados", "pm_match_sel",

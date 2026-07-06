@@ -15,9 +15,10 @@ claude
 ┌────────────┬──────────────┐
   │   Campo    │    Valor     │
   ├────────────┼──────────────┤
-  │ Usuario    │ jhon         │
+  │ Usuario    │ Admin         │
   ├────────────┼──────────────┤
-  │ Contraseña │ JhonBet2024! 
+  │ Contraseña │ Safix2027 
+
 
 Plataforma de análisis de apuestas deportivas con modelo Poisson/xG, comparación de cuotas en tiempo real y análisis con Claude AI.
 

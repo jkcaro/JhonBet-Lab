@@ -279,16 +279,16 @@ def panel_sistema_puntos(puntuacion: dict,
     else:
         col_estado = RED;    col_gauge = RED;    col_bg = "#150404"
 
-    pct = int((puntos / 5) * 100)   # 0-100 para la barra CSS
+    pct = int((puntos / 4) * 100)   # 0-100 para la barra CSS
 
     # ── Gauge vertical ───────────────────────────────────────────────
     gauge = (
         f'<div style="display:flex;flex-direction:column;align-items:center;'
         f'gap:3px;min-width:32px;">'
-        f'<div style="font-size:8px;color:{TEXT};font-family:Courier New,monospace;">5</div>'
+        f'<div style="font-size:8px;color:{TEXT};font-family:Courier New,monospace;">4</div>'
         f'<div style="width:14px;height:90px;background:{PANEL};border:1px solid {BORDER};'
         f'border-radius:3px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;">'
-        # zona verde (pts 4-5 = 80-100%)
+        # zona verde (pts 4 = 100%)
         f'<div style="position:absolute;"></div>'
         f'<div style="width:100%;height:{pct}%;background:{col_gauge};'
         f'box-shadow:0 0 6px {col_gauge}66;border-radius:2px 2px 0 0;"></div>'
@@ -299,9 +299,9 @@ def panel_sistema_puntos(puntuacion: dict,
         # leyenda de zonas (a la derecha del gauge)
         f'<div style="display:flex;flex-direction:column;justify-content:space-between;'
         f'height:90px;padding:2px 0;margin-left:4px;">'
-        f'<div style="font-size:7px;color:{GREEN};font-family:Courier New,monospace;">4-5 ✅</div>'
-        f'<div style="font-size:7px;color:{YELLOW};font-family:Courier New,monospace;">2-3 🟡</div>'
-        f'<div style="font-size:7px;color:{RED};font-family:Courier New,monospace;">0-1 🔴</div>'
+        f'<div style="font-size:7px;color:{GREEN};font-family:Courier New,monospace;">4 ✅</div>'
+        f'<div style="font-size:7px;color:{YELLOW};font-family:Courier New,monospace;">3 🟡</div>'
+        f'<div style="font-size:7px;color:{RED};font-family:Courier New,monospace;">0-2 🔴</div>'
         f'</div>'
     )
 
@@ -369,7 +369,10 @@ def semaforo_html(edge: float, puntuacion: dict | None = None) -> str:
     """Semáforo SCADA. Usa el sistema de puntos si está disponible."""
     if puntuacion:
         estado_raw = puntuacion.get("estado", "NO APOSTAR")
-        subtitulo  = f"PUNTOS {puntuacion.get('puntos', 0)}/5"
+        if puntuacion.get("sin_cuota"):
+            subtitulo = "SIN CUOTA"
+        else:
+            subtitulo = f"PUNTOS {puntuacion.get('puntos', 0)}/4"
     else:
         # Fallback al sistema basado en edge
         estado_raw = "APOSTAR" if edge >= 6 else "NO APOSTAR"
@@ -857,12 +860,12 @@ def panel_sistema_puntos_deop(puntuacion: dict,
     else:
         col_estado = DEOP_ROJO
 
-    pct = int((puntos / 5) * 100)
+    pct = int((puntos / 4) * 100)
 
     gauge = (
         f'<div style="display:flex;flex-direction:column;align-items:center;'
         f'gap:3px;min-width:32px;">'
-        f'<div style="font-size:8px;color:{DEOP_TEXTO};">5</div>'
+        f'<div style="font-size:8px;color:{DEOP_TEXTO};">4</div>'
         f'<div style="width:14px;height:90px;background:{DEOP_GRIS};border:1px solid {DEOP_GRIS};'
         f'border-radius:3px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;">'
         f'<div style="width:100%;height:{pct}%;background:{col_estado};border-radius:2px 2px 0 0;"></div>'
@@ -871,9 +874,9 @@ def panel_sistema_puntos_deop(puntuacion: dict,
         f'</div>'
         f'<div style="display:flex;flex-direction:column;justify-content:space-between;'
         f'height:90px;padding:2px 0;margin-left:4px;">'
-        f'<div style="font-size:7px;color:{DEOP_VERDE};">4-5 ✅</div>'
-        f'<div style="font-size:7px;color:{DEOP_DORADO};">2-3 🟡</div>'
-        f'<div style="font-size:7px;color:{DEOP_ROJO};">0-1 🔴</div>'
+        f'<div style="font-size:7px;color:{DEOP_VERDE};">4 ✅</div>'
+        f'<div style="font-size:7px;color:{DEOP_DORADO};">3 🟡</div>'
+        f'<div style="font-size:7px;color:{DEOP_ROJO};">0-2 🔴</div>'
         f'</div>'
     )
 
@@ -881,7 +884,7 @@ def panel_sistema_puntos_deop(puntuacion: dict,
         f'<div style="display:flex;flex-direction:column;align-items:center;gap:2px;'
         f'padding:0 12px;">'
         f'<div style="font-size:38px;font-weight:900;color:{col_estado};line-height:1;">{puntos}</div>'
-        f'<div style="font-size:9px;color:{DEOP_TEXTO};letter-spacing:1px;">/ 5 PTS</div>'
+        f'<div style="font-size:9px;color:{DEOP_TEXTO};letter-spacing:1px;">/ 4 PTS</div>'
         f'<div style="font-size:10px;font-weight:700;color:{col_estado};letter-spacing:1px;'
         f'margin-top:4px;">{estado}</div>'
         f'<div style="font-size:8px;color:{DEOP_TEXTO};margin-top:2px;">Edge {edge:+.1f}%</div>'
@@ -1059,5 +1062,258 @@ def panel_discrepancia_deop(datos: dict) -> str:
         f'</tr></thead>'
         f'<tbody>{filas}</tbody>'
         f'</table>'
+        f'</div>'
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  PANELES HMI ADICIONALES — Tabla de edges, xG, forma reciente, balanza ELO
+#  (estilo DeOP Connect; consumen solo campos estructurados ya calculados)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def gauge_puntos_deop(puntos: int, maximo: int = 4, color: str = DEOP_DORADO) -> go.Figure:
+    """Donut estilo DeOP Connect para el sistema de puntos (0-4 pts, sin sufijo %)."""
+    paleta = _paleta_activa()
+    valor_clamp = max(0, min(int(puntos), maximo))
+    fig = go.Figure(go.Pie(
+        values=[valor_clamp, maximo - valor_clamp],
+        hole=0.72,
+        marker=dict(colors=[color, DEOP_GRIS], line=dict(color=paleta["fondo"], width=2)),
+        textinfo="none",
+        hoverinfo="skip",
+        direction="clockwise",
+        sort=False,
+    ))
+    fig.add_annotation(
+        text=f"<b>{valor_clamp}/{maximo}</b>", x=0.5, y=0.56, showarrow=False,
+        font=dict(family="Inter, sans-serif", size=20, color=paleta["texto"]),
+    )
+    fig.add_annotation(
+        text="PUNTOS", x=0.5, y=0.30, showarrow=False,
+        font=dict(family="Inter, sans-serif", size=9, color=DEOP_TEXTO),
+    )
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10, r=10, t=10, b=10), height=170, showlegend=False,
+    )
+    return fig
+
+
+def _equipos_de_partido(datos: dict) -> tuple[str, str]:
+    """Nombres de local/visitante a partir de datos['partido'] ('Local vs Visitante')."""
+    partido = datos.get("partido", "Local vs Visitante")
+    partes  = partido.split(" vs ", 1)
+    nombre_l = partes[0].strip() if len(partes) > 0 else "Local"
+    nombre_v = partes[1].strip() if len(partes) > 1 else "Visitante"
+    return nombre_l, nombre_v
+
+
+def tabla_edges(datos: dict) -> str:
+    """
+    Tabla HMI de los 3 resultados de "Victoria 1X2" (Local/Empate/Visitante)
+    con P.Modelo, cuota y edge — leídos directamente de
+    datos["victoria1x2_modelo"] (mismos campos estructurados que ya usan los
+    gauges), sin parsear el texto de Claude. Resalta la fila de
+    "mejor_seleccion" (el resultado elegido por argmax(edge)).
+
+    Devuelve "" si el mercado analizado no generó victoria1x2_modelo (p.ej.
+    mercados BTTS o Más/Menos 1.5 Goles).
+    """
+    paleta = _paleta_activa()
+    modelo = datos.get("victoria1x2_modelo")
+    if not modelo:
+        return ""
+
+    nombre_l, nombre_v = _equipos_de_partido(datos)
+    seleccion = modelo.get("mejor_seleccion", "—")
+    edges     = modelo.get("edges", {})
+
+    filas_def = [
+        ("Local",     nombre_l,   modelo.get("p_local",      "—"), modelo.get("cuota_local",     "N/D")),
+        ("Empate",    "Empate",   modelo.get("p_empate",     "—"), modelo.get("cuota_empate",    "N/D")),
+        ("Visitante", nombre_v,   modelo.get("p_visitante",  "—"), modelo.get("cuota_visitante", "N/D")),
+    ]
+
+    filas_html = ""
+    for clave, etiqueta, p_modelo, cuota in filas_def:
+        edge_str = edges.get(clave, "—")
+        try:
+            edge_val = float(str(edge_str).replace("+", "").replace("%", ""))
+            col_edge = DEOP_VERDE if edge_val >= 0 else DEOP_ROJO
+            edge_txt = f"{edge_val:+.1f}%"
+        except ValueError:
+            col_edge = DEOP_TEXTO
+            edge_txt = "—"
+
+        es_sel       = clave == seleccion
+        estilo_fila  = (
+            f'background:{paleta["dorado"]}22;border-left:3px solid {paleta["dorado"]};'
+            if es_sel else 'border-left:3px solid transparent;'
+        )
+        marca_sel = " ⭐" if es_sel else ""
+        filas_html += (
+            f'<tr style="{estilo_fila}">'
+            f'<td style="font-weight:{700 if es_sel else 400};">{etiqueta}{marca_sel}</td>'
+            f'<td>{p_modelo}</td>'
+            f'<td>{cuota}</td>'
+            f'<td style="font-weight:800;color:{col_edge};">{edge_txt}</td>'
+            f'</tr>'
+        )
+
+    return (
+        f'<div style="background:{paleta["fondo"]};border:1px solid {DEOP_GRIS};border-radius:8px;'
+        f'padding:10px 12px;margin-bottom:8px;">'
+        f'<div style="font-size:10px;color:{paleta["texto"]};font-weight:800;letter-spacing:1px;'
+        f'text-transform:uppercase;margin-bottom:8px;padding-bottom:5px;'
+        f'border-bottom:2px solid {paleta["dorado"]};">◈ Tabla de Edges — Victoria 1X2</div>'
+        f'<table class="tabla-cuotas">'
+        f'<thead><tr>'
+        f'<th style="text-align:left;">Resultado</th><th>P.Modelo</th><th>Cuota</th><th>Edge</th>'
+        f'</tr></thead>'
+        f'<tbody>{filas_html}</tbody>'
+        f'</table>'
+        f'</div>'
+    )
+
+
+def panel_xg_comparativo(datos: dict) -> str:
+    """
+    Panel HMI con dos displays numéricos grandes (xG local/visitante) y una
+    barra horizontal comparativa. Lee xG de datos["probabilidades"] vía
+    _xg_de_datos() — mismo campo estructurado que ya usa el donut BTTS.
+    """
+    paleta = _paleta_activa()
+    xg_l, xg_v = _xg_de_datos(datos)
+    nombre_l, nombre_v = _equipos_de_partido(datos)
+
+    total  = xg_l + xg_v
+    pct_l  = (xg_l / total * 100) if total > 0 else 50.0
+    pct_v  = 100 - pct_l
+    col_l  = DEOP_VERDE if xg_l >= xg_v else DEOP_TEXTO
+    col_v  = DEOP_VERDE if xg_v > xg_l  else DEOP_TEXTO
+
+    return (
+        f'<div style="background:{paleta["fondo"]};border:1px solid {DEOP_GRIS};border-radius:8px;'
+        f'padding:10px 12px;margin-bottom:8px;">'
+        f'<div style="font-size:10px;color:{paleta["texto"]};font-weight:800;letter-spacing:1px;'
+        f'text-transform:uppercase;margin-bottom:10px;padding-bottom:5px;'
+        f'border-bottom:2px solid {paleta["dorado"]};">◈ xG Comparativo</div>'
+        f'<div style="display:flex;justify-content:space-around;margin-bottom:10px;">'
+        f'<div style="text-align:center;">'
+        f'<div style="font-size:11px;color:{paleta["texto"]};">{nombre_l}</div>'
+        f'<div style="font-size:30px;font-weight:900;color:{col_l};font-family:Inter,sans-serif;">{xg_l:.2f}</div>'
+        f'</div>'
+        f'<div style="text-align:center;">'
+        f'<div style="font-size:11px;color:{paleta["texto"]};">{nombre_v}</div>'
+        f'<div style="font-size:30px;font-weight:900;color:{col_v};font-family:Inter,sans-serif;">{xg_v:.2f}</div>'
+        f'</div>'
+        f'</div>'
+        f'<div style="display:flex;height:10px;border-radius:5px;overflow:hidden;background:{DEOP_GRIS};">'
+        f'<div style="width:{pct_l:.1f}%;background:{col_l};"></div>'
+        f'<div style="width:{pct_v:.1f}%;background:{col_v};"></div>'
+        f'</div>'
+        f'</div>'
+    )
+
+
+def panel_forma_reciente(datos: dict) -> str:
+    """
+    Panel HMI de forma reciente: 5 LEDs circulares por equipo
+    (verde=W, gris=D, rojo=L) con la etiqueta del equipo encima.
+    Lee datos["forma_reciente_local"] / datos["forma_reciente_visitante"]
+    (cadenas "W,D,L,W,W" ya introducidas en el formulario de análisis).
+    """
+    paleta = _paleta_activa()
+    nombre_l, nombre_v = _equipos_de_partido(datos)
+
+    def _parse(campo: str) -> list[str]:
+        crudo = str(datos.get(campo, "") or "")
+        return [r.strip().upper() for r in crudo.split(",") if r.strip()]
+
+    forma_l = _parse("forma_reciente_local")
+    forma_v = _parse("forma_reciente_visitante")
+
+    colores_led = {"W": DEOP_VERDE, "D": DEOP_GRIS, "L": DEOP_ROJO}
+
+    def _leds(forma: list[str]) -> str:
+        items = (forma + ["—"] * 5)[:5]
+        html = ""
+        for r in items:
+            col   = colores_led.get(r, "#cbd5e1")
+            letra = r if r in colores_led else ""
+            html += (
+                f'<div style="width:20px;height:20px;border-radius:50%;background:{col};'
+                f'display:flex;align-items:center;justify-content:center;'
+                f'font-size:9px;font-weight:800;color:#ffffff;'
+                f'box-shadow:0 0 5px {col}88;">{letra}</div>'
+            )
+        return f'<div style="display:flex;gap:5px;">{html}</div>'
+
+    return (
+        f'<div style="background:{paleta["fondo"]};border:1px solid {DEOP_GRIS};border-radius:8px;'
+        f'padding:10px 12px;margin-bottom:8px;">'
+        f'<div style="font-size:10px;color:{paleta["texto"]};font-weight:800;letter-spacing:1px;'
+        f'text-transform:uppercase;margin-bottom:10px;padding-bottom:5px;'
+        f'border-bottom:2px solid {paleta["dorado"]};">◈ Forma Reciente (últimos 5)</div>'
+        f'<div style="display:flex;flex-direction:column;gap:10px;">'
+        f'<div><div style="font-size:11px;color:{paleta["texto"]};font-weight:700;margin-bottom:4px;">'
+        f'{nombre_l}</div>{_leds(forma_l)}</div>'
+        f'<div><div style="font-size:11px;color:{paleta["texto"]};font-weight:700;margin-bottom:4px;">'
+        f'{nombre_v}</div>{_leds(forma_v)}</div>'
+        f'</div>'
+        f'</div>'
+    )
+
+
+def panel_balanza_elo(datos: dict) -> str:
+    """
+    Panel HMI tipo balanza: barra horizontal con un marcador que se desplaza
+    hacia el equipo favorecido por la diferencia de ELO.
+    Lee datos["elo_local"] / datos["elo_visit"] (opcionales — solo existen en
+    partidos con datos manuales). Si faltan, muestra estado "sin datos".
+    """
+    paleta = _paleta_activa()
+    nombre_l, nombre_v = _equipos_de_partido(datos)
+    elo_l = datos.get("elo_local")
+    elo_v = datos.get("elo_visit")
+
+    if elo_l is None or elo_v is None:
+        contenido = (
+            f'<div style="font-size:11px;color:{DEOP_TEXTO};padding:26px 0;text-align:center;">'
+            f'Sin datos ELO para este partido</div>'
+        )
+    else:
+        elo_l, elo_v = float(elo_l), float(elo_v)
+        diff      = elo_l - elo_v
+        rango     = 30.0  # ± puntos ELO que cubren todo el ancho visual de la barra
+        pos       = 50.0 + max(-50.0, min(50.0, (diff / rango) * 50.0))
+        favorito  = nombre_l if diff > 0 else (nombre_v if diff < 0 else "Equilibrado")
+        col_favorito = DEOP_VERDE if abs(diff) > 1 else DEOP_TEXTO
+        etiqueta_diff = "" if favorito == "Equilibrado" else f" (+{abs(diff):.0f})"
+
+        contenido = (
+            f'<div style="display:flex;justify-content:space-between;font-size:11px;'
+            f'color:{paleta["texto"]};margin-bottom:6px;">'
+            f'<span>{nombre_l} <b>{elo_l:.0f}</b></span>'
+            f'<span>{nombre_v} <b>{elo_v:.0f}</b></span>'
+            f'</div>'
+            f'<div style="position:relative;height:10px;background:{DEOP_GRIS};border-radius:5px;margin:14px 0 8px;">'
+            f'<div style="position:absolute;left:50%;top:-4px;width:1px;height:18px;'
+            f'background:{paleta["texto"]};opacity:.4;"></div>'
+            f'<div style="position:absolute;left:{pos:.1f}%;top:-5px;width:12px;height:20px;'
+            f'transform:translateX(-50%);background:{paleta["dorado"]};border-radius:3px;'
+            f'box-shadow:0 0 6px {paleta["dorado"]}88;"></div>'
+            f'</div>'
+            f'<div style="text-align:center;font-size:11px;font-weight:700;color:{col_favorito};">'
+            f'Favorito ELO: {favorito}{etiqueta_diff}</div>'
+        )
+
+    return (
+        f'<div style="background:{paleta["fondo"]};border:1px solid {DEOP_GRIS};border-radius:8px;'
+        f'padding:10px 12px;margin-bottom:8px;">'
+        f'<div style="font-size:10px;color:{paleta["texto"]};font-weight:800;letter-spacing:1px;'
+        f'text-transform:uppercase;margin-bottom:8px;padding-bottom:5px;'
+        f'border-bottom:2px solid {paleta["dorado"]};">◈ Balanza ELO</div>'
+        f'{contenido}'
         f'</div>'
     )

@@ -840,17 +840,58 @@ def _extraer_edge_desde_texto(texto: str) -> float:
     return round(valor, 1) if valor > 0 else 0.0
 
 
-def _max_edge(datos: dict) -> float:
-    """Devuelve el mayor edge positivo (%) disponible en los datos."""
+def _max_edge(datos: dict) -> float | None:
+    """
+    Devuelve el edge máximo de edge_por_outcome, incluyendo valores negativos.
+    Un edge de -5 % es un dato real (cuota mala), no ausencia de dato.
+    Devuelve None solo si no existe ninguna entrada en edge_por_outcome
+    (p.ej. mercado sin cuota en odds.csv).
+    """
     edges = datos.get("edge_por_outcome", {})
+    if not edges:
+        return None
     valores = []
     for v in edges.values():
         try:
             valores.append(float(str(v).replace("+", "").replace("%", "")))
         except ValueError:
             pass
-    positivos = [x for x in valores if x > 0]
-    return max(positivos) if positivos else 0.0
+    return max(valores) if valores else None
+
+
+def _prob_seleccion_modelo(datos: dict) -> float | None:
+    """
+    Probabilidad (0-100) que el propio modelo Poisson asigna al resultado
+    que quedó seleccionado como argmax(edge) en este mercado.
+
+    Para "Victoria 1X2" (3 resultados posibles) usa la probabilidad del
+    resultado en "mejor_seleccion". Para mercados binarios (BTTS Sí/No,
+    Más/Menos 1.5) usa la probabilidad del propio lado que se está evaluando,
+    ya que ahí el edge solo se calcula para una dirección.
+
+    Devuelve None si no hay un modelo calculado para este mercado.
+    """
+    def _pct(s) -> float | None:
+        try:
+            return float(str(s).replace("%", "").replace("+", "").strip())
+        except (ValueError, TypeError):
+            return None
+
+    v1x2 = datos.get("victoria1x2_modelo")
+    if v1x2:
+        sel  = v1x2.get("mejor_seleccion")
+        mapa = {"Local": "p_local", "Empate": "p_empate", "Visitante": "p_visitante"}
+        return _pct(v1x2.get(mapa[sel])) if sel in mapa else None
+
+    for clave, campo in (
+        ("btts_no_modelo", "p_btts_no"),
+        ("btts_si_modelo", "p_btts_si"),
+        ("menos15_modelo", "p_menos15"),
+        ("mas15_modelo",   "p_mas15"),
+    ):
+        if clave in datos:
+            return _pct(datos[clave].get(campo))
+    return None
 
 
 def _calcular_confianza(edge: float, puntos: int) -> str:
@@ -893,10 +934,23 @@ def _calcular_puntuacion(texto_claude: str, datos: dict) -> dict:
       · Edge ≥ 6% y pts ≥ 4  → APOSTAR ✅ (confianza Baja solo añade advertencia visual)
       · Edge ≥ 6% y pts == 3  → PRECAUCIÓN 🟡 (Modo Observación)
       · Edge ≥ 6% y pts ≤ 2   → NO APOSTAR 🔴
+
+    Reglas de cordura (bajan un APOSTAR a PRECAUCIÓN, nunca lo suben):
+      · Edge por encima del umbral de ruido → probable error de input, no valor real.
+        Umbral 25% si el xG es manual (BeSoccer); 12% si es estimado desde cuotas,
+        porque ahí la probabilidad del modelo ya deriva de las mismas cuotas que
+        se comparan contra sí mismas (circularidad → edges grandes = ruido casi seguro).
+      · La señal argmax(edge) apunta a un resultado con probabilidad del propio
+        modelo < 35% → se está apostando contra el resultado más probable según
+        el propio modelo (p.ej. Canadá al 24.8% en vez de Marruecos al 51.7%).
+        Esto nunca puede salir en verde, como máximo PRECAUCIÓN.
     """
-    edge = _max_edge(datos)
-    if edge == 0.0:
-        edge = _extraer_edge_desde_texto(texto_claude)
+    edge_calculado = _max_edge(datos)
+    # sin_cuota=True → no hay fila en odds.csv para este mercado.
+    # El edge del texto de Claude es solo referencia informativa; NUNCA determina
+    # la recomendación (evita falsos APOSTAR cuando el edge numérico es negativo o nulo).
+    sin_cuota = edge_calculado is None
+    edge = edge_calculado if edge_calculado is not None else 0.0
     fuente = datos.get("fuente_xg", "estimado")
 
     btts_l5 = datos.get("btts_local_5")
@@ -905,7 +959,8 @@ def _calcular_puntuacion(texto_claude: str, datos: dict) -> dict:
     motivacion = datos.get("contexto_motivacion", "")
     cond_sin_motivacion = bool(motivacion and "sin motivación" in motivacion.lower())
 
-    cond_edge_base  = edge >= 6.0
+    # Sin cuota real no hay base para recomendar, aunque el edge calculado sea 0.
+    cond_edge_base  = (not sin_cuota) and edge >= 6.0
     cond_xg_manual  = fuente == "manual" or bool(datos.get("besoccer_manual"))
     cond_btts_local = btts_l5 is not None and int(btts_l5) >= 3
     cond_btts_visit = btts_v5 is not None and int(btts_v5) >= 3
@@ -937,9 +992,27 @@ def _calcular_puntuacion(texto_claude: str, datos: dict) -> dict:
         estado   = "NO APOSTAR"
         decision = "rojo"
 
+    # ── Reglas de cordura: nunca suben el veredicto, solo lo bajan ───────────
+    umbral_ruido    = 25.0 if cond_xg_manual else 12.0
+    cond_edge_ruido = (not sin_cuota) and edge > umbral_ruido
+
+    prob_seleccion = _prob_seleccion_modelo(datos)
+    cond_prob_baja = prob_seleccion is not None and prob_seleccion < 35.0
+
+    motivo_cordura = None
+    if estado == "APOSTAR" and (cond_edge_ruido or cond_prob_baja):
+        estado   = "PRECAUCIÓN"
+        decision = "amarillo"
+        if cond_edge_ruido:
+            fuente_txt = "xG manual" if cond_xg_manual else "xG estimado"
+            motivo_cordura = f"Edge inusualmente alto (+{edge:.1f}%) con {fuente_txt} — probable ruido"
+        else:
+            motivo_cordura = "Señal contra el resultado más probable del modelo"
+
     return {
         "puntos":          puntos,
         "edge":            edge,
+        "sin_cuota":       sin_cuota,      # True = no hay cuota en odds.csv; mostrar "Sin cuota"
         "confianza":       confianza,
         "cond_edge_base":      cond_edge_base,
         "cond_xg_manual":      cond_xg_manual,
@@ -947,6 +1020,10 @@ def _calcular_puntuacion(texto_claude: str, datos: dict) -> dict:
         "cond_btts_visit":     cond_btts_visit,
         "cond_confianza":      cond_confianza,
         "cond_sin_motivacion": cond_sin_motivacion,
+        "cond_edge_ruido":     cond_edge_ruido,
+        "cond_prob_baja":      cond_prob_baja,
+        "prob_seleccion":      prob_seleccion,
+        "motivo_cordura":      motivo_cordura,
         "btts_local_5":    btts_l5,
         "btts_visit_5":    btts_v5,
         "estado":          estado,
@@ -1136,7 +1213,7 @@ def _banner_decision(texto_claude: str, datos: dict,
                      puntuacion: dict | None = None) -> str:
     """
     Genera el HTML del banner APOSTAR / PRECAUCIÓN / NO APOSTAR.
-    Usa el sistema de puntos (0-5) si está disponible.
+    Usa el sistema de puntos (0-4) si está disponible.
     """
     if puntuacion is None:
         puntuacion = _calcular_puntuacion(texto_claude, datos)
@@ -1172,30 +1249,40 @@ def _banner_decision(texto_claude: str, datos: dict,
             f'<span style="color:#16a34a;font-size:17px;font-weight:800;">{etiqueta}</span>'
             f'<span style="color:var(--texto);font-size:12px;">'
             f'Edge: <b style="color:#16a34a;">+{edge:.1f}%</b>'
-            f'&nbsp;·&nbsp;Puntos: <b style="color:#16a34a;">{puntos}/5</b>'
+            f'&nbsp;·&nbsp;Puntos: <b style="color:#16a34a;">{puntos}/4</b>'
             f'&nbsp;·&nbsp;Confianza: <b>{confianza}</b>'
             f'{stake_txt}</span></div>'
             f'{aviso_confianza}</div>'
         )
 
     if estado == "PRECAUCIÓN":
+        motivo_cordura = puntuacion.get("motivo_cordura")
+        aviso_cordura = (
+            f'<div style="font-size:11px;color:#b8780f;margin-top:4px;">⚠️ {motivo_cordura}</div>'
+            if motivo_cordura else ""
+        )
         return (
             f'<div style="background:var(--bg-alerta-aviso);border:2px solid #f5a623;border-radius:8px;'
-            f'padding:10px 16px;margin:10px 0;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'
+            f'padding:10px 16px;margin:10px 0;">'
+            f'<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'
             f'<span style="color:#b8780f;font-size:17px;font-weight:800;">🟡 PRECAUCIÓN</span>'
             f'<span style="color:var(--texto);font-size:12px;">'
             f'Edge: <b style="color:#b8780f;">+{edge:.1f}%</b>'
-            f'&nbsp;·&nbsp;Puntos: <b style="color:#b8780f;">{puntos}/5</b>'
+            f'&nbsp;·&nbsp;Puntos: <b style="color:#b8780f;">{puntos}/4</b>'
             f'&nbsp;·&nbsp;Confianza: <b>{confianza}</b>'
             f'{stake_txt}</span></div>'
+            f'{aviso_cordura}</div>'
         )
 
     # NO APOSTAR
     razones: list[str] = []
     if not puntuacion["cond_edge_base"]:
-        razones.append(f"edge {edge:.1f}% &lt; 6%")
+        if puntuacion.get("sin_cuota"):
+            razones.append("faltan cuotas para calcular edge")
+        else:
+            razones.append(f"edge {edge:.1f}% &lt; 6%")
     elif puntos <= 2:
-        razones.append(f"puntuación {puntos}/5 insuficiente")
+        razones.append(f"puntuación {puntos}/4 insuficiente")
     if confianza == "Bajo":
         razones.append("confianza Baja")
 
@@ -1419,46 +1506,18 @@ def _datos_desde_sesion() -> dict:
     return datos
 
 
-def _extraer_seccion(texto: str, num: int) -> str:
-    """Extrae la sección N del análisis de Claude (delimitada por N. al inicio de línea)."""
-    lines = texto.split('\n')
-    result_lines: list[str] = []
-    in_sec = False
-    for line in lines:
-        if re.match(rf'^{num}\.\s', line):
-            in_sec = True
-        elif in_sec and re.match(r'^\d+\.\s', line):
-            break
-        if in_sec:
-            result_lines.append(line)
-    return '\n'.join(result_lines).strip()
-
-
-def _extraer_secciones(texto: str, desde: int) -> str:
-    """Devuelve el texto de todas las secciones a partir de 'desde'."""
-    lines = texto.split('\n')
-    result_lines: list[str] = []
-    in_sec = False
-    for line in lines:
-        m = re.match(r'^(\d+)\.\s', line)
-        if m:
-            in_sec = int(m.group(1)) >= desde
-        if in_sec:
-            result_lines.append(line)
-    return '\n'.join(result_lines).strip()
-
-
 def mostrar():
     """Renderiza el módulo de análisis con Claude — estilo DeOP Connect."""
     from modules.scada_charts import (
         _CONFIG, _CSS_COMPACTO,
-        semaforo_html, gauge_donut_gris, tarjeta_veredicto_html,
-        panel_info_partido_html, panel_sistema_puntos_deop,
-        barras_probabilidad_deop, panel_discrepancia_deop,
-        DEOP_PETROLEO, DEOP_VERDE, _paleta_activa,
+        semaforo_html, gauge_donut_gris, gauge_puntos_deop,
+        panel_info_partido_html,
+        barras_probabilidad_deop, donut_ambos_marcan,
+        tabla_edges, panel_xg_comparativo, panel_forma_reciente, panel_balanza_elo,
+        DEOP_PETROLEO, _paleta_activa,
     )
+    from modules.goal_prediction import mostrar as _mostrar_goles_panel
 
-    _CONF_NUM = {"Alto": 85.0, "Medio": 50.0, "Bajo": 18.0}
     paleta = _paleta_activa()
 
     st.markdown(_CSS_COMPACTO, unsafe_allow_html=True)
@@ -1467,265 +1526,215 @@ def mostrar():
         st.session_state.pop("claude_analisis",   None)
         st.session_state.pop("claude_puntuacion", None)
 
-    col_izq, col_der = st.columns([1.2, 1], gap="medium")
-
     # ══════════════════════════════════════════════════════════════════════════
-    # COLUMNA IZQUIERDA — controles + texto + gráficos de análisis
+    # CONTROLES — selector de mercado, partido activo, formulario de análisis
     # ══════════════════════════════════════════════════════════════════════════
-    with col_izq:
-        mercado = st.selectbox(
-            "Tipo de mercado:",
-            MERCADOS_CLAUDE,
-            key="claude_mercado",
-            on_change=_limpiar_analisis,
-        )
+    mercado = st.selectbox(
+        "Tipo de mercado:",
+        MERCADOS_CLAUDE,
+        key="claude_mercado",
+        on_change=_limpiar_analisis,
+    )
 
-        datos = _datos_desde_sesion()
+    datos = _datos_desde_sesion()
 
-        if not datos:
-            st.markdown(
-                '<div style="color:#8aaa99;font-size:13px;padding:12px 0;">'
-                'Selecciona un partido en <b>Análisis de Partidos</b> '
-                'para activar el análisis con Claude AI.</div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            partido = datos.get("partido", "")
-            st.markdown(
-                f'<div style="background:{DEOP_PETROLEO};border-radius:8px;'
-                f'padding:10px 18px;margin-bottom:10px;display:flex;align-items:center;'
-                f'justify-content:space-between;">'
-                f'<span style="color:#ffffff;font-size:15px;font-weight:800;'
-                f'letter-spacing:.3px;">⚽ {partido}</span>'
-                f'<span style="color:{paleta["dorado"]};font-size:11px;font-weight:700;'
-                f'text-transform:uppercase;letter-spacing:1px;">Partido en análisis</span>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-
-            filiales = _detectar_filiales(partido)
-            if filiales:
-                for equipo in filiales:
-                    st.markdown(
-                        f'<div class="alerta-peligro" style="font-size:13px;font-weight:700;">'
-                        f'⛔ Equipo filial — análisis bloqueado: <b>{equipo}</b><br>'
-                        f'<span style="font-weight:400;font-size:12px;">'
-                        f'Los datos de xG no son fiables para equipos filiales/reservas. '
-                        f'Selecciona un equipo del primer equipo para continuar.</span></div>',
-                        unsafe_allow_html=True,
-                    )
-            else:
-                saldo     = float(st.session_state.get("saldo", 200.0))
-                stake_max = round(saldo * 0.02, 2)
-                st.markdown(
-                    f'<div style="font-size:12px;color:{paleta["texto"]};margin-bottom:8px;">'
-                    f'Stake máx.: <b style="color:{paleta["dorado"]};">€{stake_max:.2f}</b>'
-                    f'&nbsp;<span style="opacity:.6">(2% de €{saldo:.0f})</span></div>',
-                    unsafe_allow_html=True,
-                )
-
-                with st.expander("🔍 Ver datos del análisis", expanded=False):
-                    st.markdown(panel_info_partido_html(datos), unsafe_allow_html=True)
-
-                col_fl, col_fv = st.columns(2)
-                with col_fl:
-                    forma_local = st.text_input(
-                        "Forma reciente local (últimos 5)*",
-                        placeholder="Ej: W,W,D,L,W", key="claude_forma_local",
-                    )
-                with col_fv:
-                    forma_visit = st.text_input(
-                        "Forma reciente visitante (últimos 5)*",
-                        placeholder="Ej: L,D,W,W,L", key="claude_forma_visit",
-                    )
-                _forma_completa = bool(forma_local.strip()) and bool(forma_visit.strip())
-                if not _forma_completa:
-                    st.caption("⚠️ Completa la forma reciente de ambos equipos para habilitar el análisis.")
-
-                if st.button("🤖 Analizar con Claude AI", key="btn_claude",
-                             use_container_width=True, disabled=not _forma_completa):
-                    _analisis_ok = False
-                    _status = st.empty()
-                    with st.spinner(f"Analizando «{mercado}»…"):
-                        try:
-                            datos["forma_reciente_local"]      = forma_local.strip()
-                            datos["forma_reciente_visitante"]  = forma_visit.strip()
-                            _status.caption("⏳ Cargando cuotas…")
-                            datos_c  = _enriquecer_con_cuotas(datos)
-                            _status.caption("⏳ Obteniendo estadísticas (máx. 8s)…")
-                            datos_c  = _enriquecer_con_stats(datos_c)
-                            _status.caption("⏳ Preparando datos para Claude…")
-                            datos_c  = _enriquecer_con_alertas(datos_c)
-                            datos_c  = _enriquecer_para_mercado(datos_c, mercado)
-                            _status.caption("⏳ Llamando a Claude AI (máx. 45s)…")
-                            analisis = analizar_con_claude(datos_c, mercado)
-                            _status.caption("⏳ Calculando puntuación…")
-                            # _calcular_puntuacion ya aplica el fallback de edge (lee
-                            # "EDGE:" del bloque VEREDICTO FINAL si no hay cuota real
-                            # en odds.csv) y devuelve estado/decision ya consistentes.
-                            _punt    = _calcular_puntuacion(analisis, datos_c)
-                            _edge_val = float(_punt.get("edge") or 0.0)
-                            st.session_state["claude_analisis"]       = analisis
-                            st.session_state["claude_datos_analisis"] = datos_c
-                            st.session_state["claude_mercado_activo"] = mercado
-                            st.session_state["claude_puntuacion"]     = _punt
-                            st.session_state["claude_edge_pct"]       = _edge_val
-                            # Almacenar por mercado para que el gauge recuerde al cambiar
-                            st.session_state[f"claude_edge_{mercado}"] = _edge_val
-                            _analisis_ok = True
-                            _status.empty()
-                            try:
-                                _guardar_historial_claude(datos_c, _punt, analisis)
-                            except Exception as _e_hist:
-                                st.warning(f"⚠️ No se pudo guardar en historial: {_e_hist}")
-                        except anthropic.AuthenticationError:
-                            _status.empty()
-                            st.error("API key inválida. Verifica la key en modules/claude_analysis.py")
-                        except Exception as exc:
-                            _status.empty()
-                            st.error(f"Error en el análisis: {exc}")
-                    # st.rerun() fuera del spinner para que Streamlit lo procese limpio
-                    if _analisis_ok:
-                        st.rerun()
-
-        # ── Resultados ────────────────────────────────────────────────────────
-        resultado       = st.session_state.get("claude_analisis")
-        datos_guardados = st.session_state.get("claude_datos_analisis", {})
-        mercado_activo  = st.session_state.get("claude_mercado_activo", mercado)
-        puntuacion      = st.session_state.get("claude_puntuacion") or (
-            _calcular_puntuacion(resultado, datos_guardados) if resultado else None
-        )
-
-        if resultado:
-            probs_raw = datos_guardados.get("probabilidades", {})
-            xg_l_s    = str(probs_raw.get("xg_local",     "—"))
-            xg_v_s    = str(probs_raw.get("xg_visitante", "—"))
-            sec1      = _extraer_seccion(resultado, 1)
-
-            # Panel "Valoración del partido" — card blanca DeOP
-            st.markdown(
-                f'<div class="tarjeta">'
-                f'<div class="titulo-tarjeta">◈ Valoración del Partido</div>'
-                f'<div style="display:flex;gap:24px;margin-bottom:8px;">'
-                f'<span style="font-size:11px;color:{paleta["texto"]};">xG Local '
-                f'<b style="color:{paleta["dorado"]};font-size:16px;">{xg_l_s}</b></span>'
-                f'<span style="font-size:11px;color:{paleta["texto"]};">xG Visitante '
-                f'<b style="color:{paleta["dorado"]};font-size:16px;">{xg_v_s}</b></span>'
-                f'</div>'
-                f'<div style="font-size:12px;color:{paleta["texto"]};line-height:1.55;">'
-                f'{_normalizar_formato(sec1 or resultado)}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
-
-            # Secciones 2+ del análisis — card blanca con borde dorado izquierdo
-            resto = _extraer_secciones(resultado, desde=2)
-            st.markdown(
-                f'<div style="background:{paleta["fondo"]};border:1px solid #e2e8f0;'
-                f'border-left:5px solid {paleta["dorado"]};border-radius:8px;'
-                f'padding:12px 16px;margin-bottom:8px;font-size:12px;line-height:1.65;'
-                f'color:{paleta["texto"]};">'
-                f'{_normalizar_formato(resto or resultado)}</div>',
-                unsafe_allow_html=True,
-            )
-
-            # Apuesta virtual (modo observación)
-            if (st.session_state.get("modo_observacion") and
-                    puntuacion and puntuacion.get("estado") == "APOSTAR"):
-                if st.button("📝 Registrar como apuesta virtual",
-                             key="btn_virtual", use_container_width=True):
-                    _guardar_apuesta_virtual(datos_guardados, puntuacion, resultado)
-                    st.success("✅ Apuesta virtual registrada en data/virtual_bets.csv")
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # COLUMNA DERECHA — siempre visible, métricas de decisión
-    # ══════════════════════════════════════════════════════════════════════════
-    with col_der:
-        from modules.goal_prediction import mostrar as _mostrar_goles_panel
-
-        resultado       = st.session_state.get("claude_analisis")
-        datos_guardados = st.session_state.get("claude_datos_analisis", {})
-        puntuacion      = st.session_state.get("claude_puntuacion")
-        mercado_activo  = st.session_state.get("claude_mercado_activo", "")
-        # Leer edge del mercado activo específico; fallback al genérico
-        _mercado_sel    = st.session_state.get("claude_mercado", mercado_activo)
-        edge_der        = float(
-            st.session_state.get(f"claude_edge_{_mercado_sel}")
-            or st.session_state.get("claude_edge_pct")
-            or 0.0
-        )
-
-        # 1. Predicción de Goles
+    if not datos:
         st.markdown(
-            '<div class="titulo-tarjeta" style="margin-bottom:6px;">◈ Predicción de Goles</div>',
+            '<div style="color:#8aaa99;font-size:13px;padding:12px 0;">'
+            'Selecciona un partido en <b>Análisis de Partidos</b> '
+            'para activar el análisis con Claude AI.</div>',
             unsafe_allow_html=True,
         )
+        return
+
+    partido = datos.get("partido", "")
+    st.markdown(
+        f'<div style="background:{DEOP_PETROLEO};border-radius:8px;'
+        f'padding:10px 18px;margin-bottom:10px;display:flex;align-items:center;'
+        f'justify-content:space-between;">'
+        f'<span style="color:#ffffff;font-size:15px;font-weight:800;'
+        f'letter-spacing:.3px;">⚽ {partido}</span>'
+        f'<span style="color:{paleta["dorado"]};font-size:11px;font-weight:700;'
+        f'text-transform:uppercase;letter-spacing:1px;">Partido en análisis</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("⚽ Predicción de Goles", expanded=False):
         _mostrar_goles_panel()
 
-        # 2. Semáforo — se mantiene oscuro (acento SCADA), envuelto en card blanca
+    filiales = _detectar_filiales(partido)
+    if filiales:
+        for equipo in filiales:
+            st.markdown(
+                f'<div class="alerta-peligro" style="font-size:13px;font-weight:700;">'
+                f'⛔ Equipo filial — análisis bloqueado: <b>{equipo}</b><br>'
+                f'<span style="font-weight:400;font-size:12px;">'
+                f'Los datos de xG no son fiables para equipos filiales/reservas. '
+                f'Selecciona un equipo del primer equipo para continuar.</span></div>',
+                unsafe_allow_html=True,
+            )
+        return
+
+    saldo     = float(st.session_state.get("saldo", 200.0))
+    stake_max = round(saldo * 0.02, 2)
+    st.markdown(
+        f'<div style="font-size:12px;color:{paleta["texto"]};margin-bottom:8px;">'
+        f'Stake máx.: <b style="color:{paleta["dorado"]};">€{stake_max:.2f}</b>'
+        f'&nbsp;<span style="opacity:.6">(2% de €{saldo:.0f})</span></div>',
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("🔍 Ver datos del análisis", expanded=False):
+        st.markdown(panel_info_partido_html(datos), unsafe_allow_html=True)
+
+    col_fl, col_fv = st.columns(2)
+    with col_fl:
+        forma_local = st.text_input(
+            "Forma reciente local (últimos 5)*",
+            placeholder="Ej: W,W,D,L,W", key="claude_forma_local",
+        )
+    with col_fv:
+        forma_visit = st.text_input(
+            "Forma reciente visitante (últimos 5)*",
+            placeholder="Ej: L,D,W,W,L", key="claude_forma_visit",
+        )
+    _forma_completa = bool(forma_local.strip()) and bool(forma_visit.strip())
+    if not _forma_completa:
+        st.caption("⚠️ Completa la forma reciente de ambos equipos para habilitar el análisis.")
+
+    if st.button("🤖 Analizar con Claude AI", key="btn_claude",
+                 use_container_width=True, disabled=not _forma_completa):
+        _analisis_ok = False
+        _status = st.empty()
+        with st.spinner(f"Analizando «{mercado}»…"):
+            try:
+                datos["forma_reciente_local"]      = forma_local.strip()
+                datos["forma_reciente_visitante"]  = forma_visit.strip()
+                _status.caption("⏳ Cargando cuotas…")
+                datos_c  = _enriquecer_con_cuotas(datos)
+                _status.caption("⏳ Obteniendo estadísticas (máx. 8s)…")
+                datos_c  = _enriquecer_con_stats(datos_c)
+                _status.caption("⏳ Preparando datos para Claude…")
+                datos_c  = _enriquecer_con_alertas(datos_c)
+                datos_c  = _enriquecer_para_mercado(datos_c, mercado)
+                _status.caption("⏳ Llamando a Claude AI (máx. 45s)…")
+                analisis = analizar_con_claude(datos_c, mercado)
+                _status.caption("⏳ Calculando puntuación…")
+                # _calcular_puntuacion ya aplica el fallback de edge (lee
+                # "EDGE:" del bloque VEREDICTO FINAL si no hay cuota real
+                # en odds.csv) y devuelve estado/decision ya consistentes.
+                _punt    = _calcular_puntuacion(analisis, datos_c)
+                _edge_val = float(_punt.get("edge") or 0.0)
+                st.session_state["claude_analisis"]       = analisis
+                st.session_state["claude_datos_analisis"] = datos_c
+                st.session_state["claude_mercado_activo"] = mercado
+                st.session_state["claude_puntuacion"]     = _punt
+                st.session_state["claude_edge_pct"]       = _edge_val
+                # Almacenar por mercado para que el gauge recuerde al cambiar
+                st.session_state[f"claude_edge_{mercado}"] = _edge_val
+                _analisis_ok = True
+                _status.empty()
+                try:
+                    _guardar_historial_claude(datos_c, _punt, analisis)
+                except Exception as _e_hist:
+                    st.warning(f"⚠️ No se pudo guardar en historial: {_e_hist}")
+            except anthropic.AuthenticationError:
+                _status.empty()
+                st.error("API key inválida. Verifica la key en modules/claude_analysis.py")
+            except Exception as exc:
+                _status.empty()
+                st.error(f"Error en el análisis: {exc}")
+        # st.rerun() fuera del spinner para que Streamlit lo procese limpio
+        if _analisis_ok:
+            st.rerun()
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # RESULTADOS — presentación HMI/SCADA en filas, sin texto largo visible
+    # ══════════════════════════════════════════════════════════════════════════
+    resultado       = st.session_state.get("claude_analisis")
+    datos_guardados = st.session_state.get("claude_datos_analisis", {})
+    mercado_activo  = st.session_state.get("claude_mercado_activo", mercado)
+    puntuacion      = st.session_state.get("claude_puntuacion") or (
+        _calcular_puntuacion(resultado, datos_guardados) if resultado else None
+    )
+
+    if not resultado or not puntuacion:
+        return
+
+    edge_der = float(puntuacion.get("edge") or 0.0)
+    pts      = puntuacion.get("puntos", 0)
+    conf     = puntuacion.get("confianza", "Bajo")
+    _CONF_NUM = {"Alto": 85.0, "Medio": 50.0, "Bajo": 18.0}
+    confianza_pct = _CONF_NUM.get(conf, 18.0)
+
+    st.markdown(
+        f'<div style="font-size:10px;color:{paleta["texto"]};font-weight:800;'
+        f'letter-spacing:2px;text-transform:uppercase;margin:14px 0 8px;">'
+        f'◈ {mercado_activo}</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Fila 1 — semáforo + banner (veredicto y motivo) + gauges edge/confianza/puntos ──
+    col_luz, col_sem, col_g1, col_g2, col_g3 = st.columns([0.8, 1.6, 1, 1, 1])
+    with col_luz:
+        st.markdown(semaforo_html(edge_der, puntuacion), unsafe_allow_html=True)
+    with col_sem:
         st.markdown(
-            f'<div style="background:{paleta["fondo"]};border:1px solid #e2e8f0;border-radius:8px;'
-            f'padding:10px;display:flex;justify-content:center;margin-bottom:8px;">'
-            f'{semaforo_html(edge_der, puntuacion)}'
-            f'</div>',
+            _banner_decision(resultado, datos_guardados, puntuacion),
             unsafe_allow_html=True,
         )
+    with col_g1:
+        st.plotly_chart(gauge_donut_gris(max(0.0, edge_der), "Edge %", paleta["dorado"]),
+                        use_container_width=True, config=_CONFIG, key="fila1_gauge_edge")
+    with col_g2:
+        st.plotly_chart(gauge_donut_gris(confianza_pct, "Confianza %", paleta["petroleo"]),
+                        use_container_width=True, config=_CONFIG, key="fila1_gauge_conf")
+    with col_g3:
+        st.plotly_chart(gauge_puntos_deop(pts, color=paleta["dorado"]),
+                        use_container_width=True, config=_CONFIG, key="fila1_gauge_pts")
 
-        if resultado and puntuacion:
-            estado = puntuacion.get("estado", "NO APOSTAR")
-            pts    = puntuacion.get("puntos", 0)
-            conf   = puntuacion.get("confianza", "Bajo")
+    # ── Fila 2 — tabla de edges + barras 1X2 + donut BTTS ──────────────────────
+    col_tabla, col_barras, col_donut = st.columns(3)
+    with col_tabla:
+        html_tabla = tabla_edges(datos_guardados)
+        if html_tabla:
+            st.markdown(html_tabla, unsafe_allow_html=True)
+        else:
+            st.caption("Tabla de edges no disponible para este mercado.")
+    with col_barras:
+        if datos_guardados.get("probabilidades"):
+            st.plotly_chart(barras_probabilidad_deop(datos_guardados),
+                            use_container_width=True, config=_CONFIG, key="fila2_barras")
+    with col_donut:
+        _probs_raw = datos_guardados.get("probabilidades", {})
+        try:
+            _xg_l = float(_probs_raw.get("xg_local") or 0)
+            _xg_v = float(_probs_raw.get("xg_visitante") or 0)
+        except (ValueError, TypeError):
+            _xg_l = _xg_v = 0.0
+        if _xg_l > 0 and _xg_v > 0:
+            st.plotly_chart(donut_ambos_marcan(datos_guardados),
+                            use_container_width=True, config=_CONFIG, key="fila2_donut")
 
-            # Veredicto grande — mismo componente que match_dashboard.py / dominant_bet.py
-            st.markdown(
-                tarjeta_veredicto_html(
-                    mercado_activo or "Veredicto",
-                    f"Edge {edge_der:+.1f}% · {pts}/5 pts · Confianza {conf}",
-                    estado,
-                ),
-                unsafe_allow_html=True,
-            )
+    # ── Fila 3 — xG comparativo + forma reciente + balanza ELO ────────────────
+    col_xg, col_forma, col_elo = st.columns(3)
+    with col_xg:
+        st.markdown(panel_xg_comparativo(datos_guardados), unsafe_allow_html=True)
+    with col_forma:
+        st.markdown(panel_forma_reciente(datos_guardados), unsafe_allow_html=True)
+    with col_elo:
+        st.markdown(panel_balanza_elo(datos_guardados), unsafe_allow_html=True)
 
-            # Gauges DeOP — Edge / Confianza / BTTS (BTTS solo si el mercado aplica)
-            _btts_modelo = (datos_guardados.get("btts_si_modelo")
-                            or datos_guardados.get("btts_no_modelo"))
-            _mostrar_btts = "Ambos Marcan" in mercado_activo and _btts_modelo
-            confianza_pct = _CONF_NUM.get(conf, 18.0)
+    # Apuesta virtual (modo observación)
+    if st.session_state.get("modo_observacion"):
+        if puntuacion.get("estado") == "APOSTAR":
+            if st.button("📝 Registrar como apuesta virtual",
+                         key="btn_virtual", use_container_width=True):
+                _guardar_apuesta_virtual(datos_guardados, puntuacion, resultado)
+                st.success("✅ Apuesta virtual registrada en data/virtual_bets.csv")
+        _panel_apuestas_virtuales()
 
-            cols_g = st.columns(3 if _mostrar_btts else 2)
-            with cols_g[0]:
-                st.plotly_chart(gauge_donut_gris(max(0.0, edge_der), "Edge %", paleta["dorado"]),
-                                use_container_width=True, config=_CONFIG, key="cur_gauge_edge")
-            with cols_g[1]:
-                st.plotly_chart(gauge_donut_gris(confianza_pct, "Confianza %", paleta["petroleo"]),
-                                use_container_width=True, config=_CONFIG, key="cur_gauge_conf")
-            if _mostrar_btts:
-                try:
-                    _p_btts = float(str(_btts_modelo.get("p_btts_si", "0%")).replace("%", ""))
-                except ValueError:
-                    _p_btts = 0.0
-                with cols_g[2]:
-                    st.plotly_chart(gauge_donut_gris(_p_btts, "BTTS Sí %", DEOP_VERDE),
-                                    use_container_width=True, config=_CONFIG, key="cur_gauge_btts")
-
-            # Barras de probabilidades 1X2 — Plotly re-skineado a colores claros
-            if datos_guardados.get("probabilidades"):
-                st.plotly_chart(barras_probabilidad_deop(datos_guardados),
-                                use_container_width=True, config=_CONFIG, key="cur_barras")
-
-            # Discrepancia modelo vs cuota real — tabla DeOP aparte
-            html_disc = panel_discrepancia_deop(datos_guardados)
-            if html_disc:
-                st.markdown(html_disc, unsafe_allow_html=True)
-
-            # Sistema de puntos — card blanca con borde petróleo
-            st.markdown(panel_sistema_puntos_deop(puntuacion), unsafe_allow_html=True)
-
-            # Banner veredicto final
-            st.markdown(
-                _banner_decision(resultado, datos_guardados, puntuacion),
-                unsafe_allow_html=True,
-            )
-
-            if st.session_state.get("modo_observacion"):
-                _panel_apuestas_virtuales()
+    # ── Informe completo — texto íntegro de Claude, oculto por defecto ─────────
+    with st.expander("📋 Informe completo", expanded=False):
+        st.markdown(_normalizar_formato(resultado), unsafe_allow_html=True)
