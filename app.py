@@ -96,6 +96,18 @@ _CLAVES_SESION = [
     "analisis_listo", "claude_analisis",
     "tema_activo", "modo_observacion", "saldo",
     "fuente_xg_activa", "fuente_odds", "fuente_espn", "fuente_logos",
+    # Análisis Primera Parte (modules/first_half_analysis.py) — módulo independiente
+    "fh_1x2_local", "fh_1x2_empate", "fh_1x2_visitante",
+    "fh_ou05_over", "fh_ou05_under",
+    "fh_ou15_over", "fh_ou15_under",
+    "fh_1marca_local", "fh_1marca_visitante", "fh_1marca_ninguno",
+    "fh_stat_local_nombre", "fh_stat_local_pct_marca", "fh_stat_local_pct_encaja",
+    "fh_stat_local_pct_marca_primero", "fh_stat_local_pct_recibe_primero",
+    "fh_stat_local_goles_030", "fh_stat_local_goles_3145",
+    "fh_stat_visit_nombre", "fh_stat_visit_pct_marca", "fh_stat_visit_pct_encaja",
+    "fh_stat_visit_pct_marca_primero", "fh_stat_visit_pct_recibe_primero",
+    "fh_stat_visit_goles_030", "fh_stat_visit_goles_3145",
+    "fh_analisis_ia",
 ]
 
 
@@ -1579,6 +1591,7 @@ if st.session_state.get("_limpieza_fecha") != _HOY_LIMPIEZA:
 PAGINAS_CATEGORIAS: dict[str, list[tuple[str, str]]] = {
     "ANÁLISIS": [
         ("🏠", "Análisis de Partidos"),        # Dashboard principal rediseñado (DeOP)
+        ("⚽", "Análisis Primera Parte"),      # Calculadora de mercados HT — módulo independiente
         ("➕", "Agregar Partido"),             # Formulario para añadir partido manual
         ("🤖", "Claude AI"),                   # Análisis detallado por mercado (texto completo)
         ("📊", "Comparación de Cuotas"),       # Tabla de cuotas por casa de apuestas
@@ -1617,6 +1630,7 @@ with st.sidebar:
     # ── Mapeo fijo ruta→key ASCII (sin acentos, sin espacios) ──────────
     _NAV_KEYS: dict[str, str] = {
         "Análisis de Partidos":   "nav_dashboard",
+        "Análisis Primera Parte": "nav_primera_parte",
         "Agregar Partido":        "nav_analisis",
         "Claude AI":              "nav_nuevo",
         "Modelo Predictivo":      "nav_prediccion",
@@ -1664,6 +1678,7 @@ with st.sidebar:
 
     _NAV_ICONS: dict[str, str] = {
         "nav_dashboard":   _svg_uri("<path d='M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/><polyline points='9 22 9 12 15 12 15 22'/>"),
+        "nav_primera_parte": _svg_uri("<circle cx='12' cy='12' r='10'/><path d='M12 2a15.3 15.3 0 0 0 0 20'/><path d='M2 12h20'/>"),
         "nav_analisis":    _svg_uri("<line x1='18' y1='20' x2='18' y2='10'/><line x1='12' y1='20' x2='12' y2='4'/><line x1='6' y1='20' x2='6' y2='14'/>"),
         "nav_nuevo":       _svg_uri("<path d='M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z'/>"),
         "nav_prediccion":  _svg_uri("<circle cx='12' cy='12' r='10'/><circle cx='12' cy='12' r='6'/><circle cx='12' cy='12' r='2'/>"),
@@ -1689,6 +1704,7 @@ with st.sidebar:
     st.markdown('<div class="deop-categoria">ANÁLISIS</div>', unsafe_allow_html=True)
     _NAV_G1 = [
         ("Dashboard",             "Análisis de Partidos"),
+        ("Análisis Primera Parte", "Análisis Primera Parte"),
         ("Análisis de Partidos",  "Agregar Partido"),
         ("Nuevo Análisis",        "Claude AI"),
         ("Predicción con IA",     "Modelo Predictivo"),
@@ -2018,6 +2034,10 @@ pagina = st.session_state["pagina_activa"]
 if pagina == "Análisis de Partidos":
     from modules.match_dashboard import mostrar as mostrar_dashboard
     mostrar_dashboard()
+
+elif pagina == "Análisis Primera Parte":
+    from modules.first_half_analysis import mostrar as mostrar_primera_parte
+    mostrar_primera_parte()
 
 elif pagina == "Agregar Partido":
     from modules.add_partido import mostrar as mostrar_agregar
