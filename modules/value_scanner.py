@@ -1,6 +1,5 @@
 """Módulo: Escáner de valor — detecta apuestas con edge ≥ 6% usando el modelo Poisson."""
 
-import math
 import re
 import requests
 import streamlit as st

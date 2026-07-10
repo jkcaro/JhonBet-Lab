@@ -14,10 +14,7 @@ Para iniciar:  streamlit run app.py
 import json          # Para leer/escribir el archivo de configuración (config.json)
 import logging
 import os
-import re
 import sys
-import traceback
-from datetime import date as _date_today
 from pathlib import Path
 
 os.makedirs(Path(__file__).parent / "data", exist_ok=True)

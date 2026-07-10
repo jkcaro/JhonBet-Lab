@@ -153,6 +153,22 @@ def _resultado_mercado(campos: list[tuple[str, str]], key_prefix: str) -> dict |
     return resultado
 
 
+def _etiqueta_visible(etiqueta_canonica: str, nombre_local: str, nombre_visit: str) -> str:
+    """
+    Sustituye las etiquetas canónicas "Local"/"Visitante" por el nombre real del
+    equipo en todo lo que se muestra en pantalla (inputs, tarjetas, panel
+    comparativo, prompt IA). Las claves internas (cuotas/implicitas/normalizadas)
+    siguen indexadas por "Local"/"Visitante" — solo cambia el texto visible.
+    Los mercados O/U no tienen outcomes "Local"/"Visitante", así que quedan
+    intactos automáticamente (son del partido, no de un equipo).
+    """
+    if etiqueta_canonica == "Local":
+        return nombre_local
+    if etiqueta_canonica == "Visitante":
+        return nombre_visit
+    return etiqueta_canonica
+
+
 def _barra_probabilidad(etiqueta: str, pct: float, cuota: float, implicita_pct: float, color: str) -> str:
     """Tarjeta con porcentaje grande + barra horizontal proporcional (sustituye la tabla)."""
     ancho = max(5, min(int(round(pct)), 100))
@@ -168,7 +184,7 @@ def _barra_probabilidad(etiqueta: str, pct: float, cuota: float, implicita_pct: 
     )
 
 
-def _tarjetas_probabilidad(resultado: dict) -> None:
+def _tarjetas_probabilidad(resultado: dict, nombre_local: str, nombre_visit: str) -> None:
     """Fila de tarjetas (una por resultado) con barra proporcional y porcentaje grande."""
     outcomes = list(resultado["normalizadas"].items())
     cols = st.columns(len(outcomes))
@@ -176,28 +192,38 @@ def _tarjetas_probabilidad(resultado: dict) -> None:
         cuota     = resultado["cuotas"][etiqueta]
         implicita = resultado["implicitas"][etiqueta] * 100
         color     = _PALETA_BARRAS[i % len(_PALETA_BARRAS)]
+        etiqueta_visible = _etiqueta_visible(etiqueta, nombre_local, nombre_visit)
         with col:
             st.markdown(
-                _barra_probabilidad(etiqueta, prob * 100, cuota, implicita, color),
+                _barra_probabilidad(etiqueta_visible, prob * 100, cuota, implicita, color),
                 unsafe_allow_html=True,
             )
 
 
-def _seccion_mercado(titulo: str, campos: list[tuple[str, str]], key_prefix: str) -> dict | None:
+def _seccion_mercado(
+    titulo: str, campos: list[tuple[str, str]], key_prefix: str,
+    nombre_local: str, nombre_visit: str,
+) -> dict | None:
     """
     Renderiza — en una sola fila con st.columns — el formulario de cuotas de un mercado,
     y sus tarjetas de probabilidad inmediatamente debajo (misma tarjeta, no en otra sección).
-    campos: lista de (etiqueta, sufijo_key). Devuelve el resultado de _resultado_mercado
-    para el resumen de estado y el panel comparativo.
+    campos: lista de (etiqueta, sufijo_key) — SIEMPRE canónicas ("Local"/"Visitante"/...),
+    usadas para las claves internas. Lo único que cambia con nombre_local/nombre_visit es el
+    texto mostrado (label del input, tarjetas, título) vía _etiqueta_visible(); los mercados
+    O/U no tienen etiquetas "Local"/"Visitante" así que no se ven afectados.
+    Devuelve el resultado de _resultado_mercado para el resumen de estado y el panel comparativo.
     """
-    st.markdown(f'<div class="titulo-tarjeta">{titulo}</div>', unsafe_allow_html=True)
+    tiene_nombres = nombre_local != "Local" or nombre_visit != "Visitante"
+    titulo_visible = f"{titulo} — {nombre_local} vs {nombre_visit}" if tiene_nombres else titulo
+    st.markdown(f'<div class="titulo-tarjeta">{titulo_visible}</div>', unsafe_allow_html=True)
 
     cols = st.columns(len(campos))
     for col, (etiqueta, sufijo) in zip(cols, campos):
         key = f"{key_prefix}_{sufijo}"
         with col:
             st.number_input(
-                etiqueta, min_value=0.0, max_value=100.0,
+                _etiqueta_visible(etiqueta, nombre_local, nombre_visit),
+                min_value=0.0, max_value=100.0,
                 value=st.session_state.get(key), step=0.01, key=key,
                 placeholder="—", help="Cuota decimal (ej. 2.05). Vacío si no la tienes.",
             )
@@ -214,23 +240,44 @@ def _seccion_mercado(titulo: str, campos: list[tuple[str, str]], key_prefix: str
             unsafe_allow_html=True,
         )
     else:
-        _tarjetas_probabilidad(resultado)
+        _tarjetas_probabilidad(resultado, nombre_local, nombre_visit)
 
     return resultado
 
 
-def _seccion_stats_equipo(nombre_default: str, key_prefix: str) -> dict:
+def _seccion_nombres_equipos() -> tuple[str, str]:
+    """
+    Nombres de equipo — arriba del todo del formulario, antes de las cuotas, porque
+    alimentan las etiquetas de todos los mercados con equipo (1X2 HT, Primer en Marcar).
+    Mismas claves de session_state que antes (fh_stat_local_nombre/fh_stat_visit_nombre),
+    solo se relocaliza el widget. Devuelve (nombre_local, nombre_visitante) ya resueltos
+    con fallback a "Local"/"Visitante" si el campo queda vacío.
+    """
+    st.markdown('<div class="titulo-tarjeta">Equipos</div>', unsafe_allow_html=True)
+    col_l, col_v = st.columns(2)
+    with col_l:
+        nombre_local_in = st.text_input(
+            "Nombre equipo local",
+            value=st.session_state.get("fh_stat_local_nombre", "Local"),
+            key="fh_stat_local_nombre",
+        )
+    with col_v:
+        nombre_visit_in = st.text_input(
+            "Nombre equipo visitante",
+            value=st.session_state.get("fh_stat_visit_nombre", "Visitante"),
+            key="fh_stat_visit_nombre",
+        )
+    return (nombre_local_in.strip() or "Local"), (nombre_visit_in.strip() or "Visitante")
+
+
+def _seccion_stats_equipo(nombre: str, key_prefix: str) -> dict:
     """
     Bloque de datos estadísticos opcionales por equipo (fuente manual: BeSoccer/Flashscore/SofaScore).
+    El nombre del equipo se resuelve arriba del formulario (_seccion_nombres_equipos) y
+    llega aquí ya decidido — este bloque solo aporta los 6 campos numéricos.
     Un campo sin rellenar queda en None (dato ausente ≠ 0): placeholder "—", value=None nativo de
     Streamlit 1.58 — sin valor por defecto en 0.
     """
-    nombre = st.text_input(
-        "Nombre del equipo",
-        value=st.session_state.get(f"{key_prefix}_nombre", nombre_default),
-        key=f"{key_prefix}_nombre",
-    )
-
     col_a, col_b = st.columns(2)
     with col_a:
         pct_marca = st.number_input(
@@ -371,6 +418,9 @@ def _filas_comparacion_ou05(res_ou05: dict | None, stats_local: dict, stats_visi
 
 def _panel_comparativo(resultados_mercados: dict, stats_local: dict, stats_visit: dict) -> None:
     """Panel descriptivo Mercado vs Datos — sin veredictos ni cálculo de edge."""
+    nombre_local = stats_local["nombre"]
+    nombre_visit = stats_visit["nombre"]
+
     st.markdown('<div class="titulo-tarjeta">📊 Mercado vs Datos</div>', unsafe_allow_html=True)
     st.markdown('<div class="fh-compact">', unsafe_allow_html=True)
     col_mercado, col_datos = st.columns(2)
@@ -388,7 +438,10 @@ def _panel_comparativo(resultados_mercados: dict, stats_local: dict, stats_visit
                     unsafe_allow_html=True,
                 )
                 continue
-            partes = " · ".join(f"{k} {v * 100:.1f}%" for k, v in resultado["normalizadas"].items())
+            partes = " · ".join(
+                f"{_etiqueta_visible(k, nombre_local, nombre_visit)} {v * 100:.1f}%"
+                for k, v in resultado["normalizadas"].items()
+            )
             st.markdown(
                 f'<div class="fila-prob"><span class="texto-apagado">{titulo}:</span> <span>{partes}</span></div>',
                 unsafe_allow_html=True,
@@ -468,12 +521,21 @@ def _construir_prompt_ia(resultados_mercados: dict, stats_local: dict, stats_vis
     en session_state por haber usado el análisis principal — xG y forma reciente del
     partido como contexto adicional opcional. Solo lee session_state, no importa módulos.
     """
+    nombre_local = stats_local["nombre"]
+    nombre_visit = stats_visit["nombre"]
+
     bloques_mercado = []
     for titulo, resultado in resultados_mercados.items():
         if resultado is None or not resultado.get("en_rango"):
             continue
-        cuotas_txt = ", ".join(f"{k} @ {v:.2f}" for k, v in resultado["cuotas"].items())
-        norm_txt   = ", ".join(f"{k} {v * 100:.1f}%" for k, v in resultado["normalizadas"].items())
+        cuotas_txt = ", ".join(
+            f"{_etiqueta_visible(k, nombre_local, nombre_visit)} @ {v:.2f}"
+            for k, v in resultado["cuotas"].items()
+        )
+        norm_txt = ", ".join(
+            f"{_etiqueta_visible(k, nombre_local, nombre_visit)} {v * 100:.1f}%"
+            for k, v in resultado["normalizadas"].items()
+        )
         bloques_mercado.append(
             f"- {titulo}: cuotas ({cuotas_txt}) · overround {resultado['overround'] * 100:.1f}% "
             f"· probabilidad normalizada ({norm_txt})"
@@ -587,10 +649,18 @@ def mostrar() -> None:
     }
     _resumen_estado(resultados_preview)
 
+    # Nombres de equipo — arriba del todo del formulario, antes de las cuotas: alimentan
+    # las etiquetas de 1X2 HT y Primer en Marcar en toda la página (O/U no los usa).
+    st.markdown('<div class="tarjeta fh-tarjeta">', unsafe_allow_html=True)
+    nombre_local, nombre_visit = _seccion_nombres_equipos()
+    st.markdown('</div>', unsafe_allow_html=True)
+
     resultados_mercados: dict = {}
     for clave, titulo_seccion, campos, prefix in _DEFINICIONES_MERCADOS:
         st.markdown('<div class="tarjeta fh-tarjeta">', unsafe_allow_html=True)
-        resultados_mercados[clave] = _seccion_mercado(titulo_seccion, campos, prefix)
+        resultados_mercados[clave] = _seccion_mercado(
+            titulo_seccion, campos, prefix, nombre_local, nombre_visit,
+        )
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="tarjeta fh-tarjeta">', unsafe_allow_html=True)
@@ -601,11 +671,11 @@ def mostrar() -> None:
     st.caption("Fuente manual: BeSoccer / Flashscore / SofaScore")
     col_l, col_v = st.columns(2)
     with col_l:
-        with st.expander("📊 Datos estadísticos — Local", expanded=False):
-            stats_local = _seccion_stats_equipo("Local", "fh_stat_local")
+        with st.expander(f"📊 Datos estadísticos — {nombre_local}", expanded=False):
+            stats_local = _seccion_stats_equipo(nombre_local, "fh_stat_local")
     with col_v:
-        with st.expander("📊 Datos estadísticos — Visitante", expanded=False):
-            stats_visit = _seccion_stats_equipo("Visitante", "fh_stat_visit")
+        with st.expander(f"📊 Datos estadísticos — {nombre_visit}", expanded=False):
+            stats_visit = _seccion_stats_equipo(nombre_visit, "fh_stat_visit")
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="tarjeta fh-tarjeta">', unsafe_allow_html=True)
