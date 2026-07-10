@@ -12,20 +12,24 @@ import streamlit.components.v1 as components
 import anthropic
 from dotenv import load_dotenv
 
+from modules import etiquetas_mercado as em
+
 load_dotenv()
 
 API_KEY      = os.getenv("ANTHROPIC_API_KEY", "")
 CLAUDE_MODEL = "claude-sonnet-4-6"
 
+# Nomenclatura Codere (mercados en vivo, fuente: estadísticas de Codere) — solo texto
+# visible; no se compara/filtra por estos strings en ningún otro sitio del archivo.
 MERCADOS_VIVO = [
-    "1X2 (resultado final)",
-    "Próximo gol (local / sin gol / visitante)",
-    "Over/Under 2.5 Goles",
-    "Ambos Marcan",
+    f"{em.titulo_mercado('1X2')} (resultado final)",
+    f"Próximo gol ({em.outcome_primer_marcador('Local')} / {em.outcome_primer_marcador('Ninguno')} / {em.outcome_primer_marcador('Visitante')})",
+    em.titulo_mercado("Over/Under 2.5"),
+    em.titulo_mercado("Ambos Marcan"),
     "Hándicap en vivo",
     "Corners totales",
     "Tarjetas totales",
-    "Resultado al descanso",
+    em.titulo_mercado("Resultado al descanso"),
 ]
 
 # ── Paleta DeOP Connect (claro) ────────────────────────────────────────────────

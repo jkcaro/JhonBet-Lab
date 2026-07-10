@@ -7,6 +7,10 @@ value_scanner. Solo calcula probabilidad implícita, overround y
 probabilidad normalizada a partir de cuotas introducidas manualmente.
 No calcula edge ni genera veredictos, semáforos, score ni confianza.
 
+Sí importa modules/etiquetas_mercado.py — diccionario central de texto
+visible (nomenclatura Codere), sin datos ni claves internas: no rompe la
+independencia del sistema de señales.
+
 Fase 2 añade un análisis descriptivo con Claude API (llamada propia e
 independiente — no reutiliza el cliente ni las funciones de
 modules/claude_analysis.py) que solo compara, en prosa, lo que el mercado
@@ -17,6 +21,12 @@ nativamente st.number_input(value=None, placeholder=...) devolviendo None
 mientras el campo esté vacío — es el camino usado en todo el módulo para
 que "dato ausente" nunca se confunda con "0". No hace falta el fallback de
 text_input + validación manual ni un checkbox "sin datos" por bloque.
+
+Tramos de goles BeSoccer: goles_115/goles_1630/goles_3145 (1'-15', 16'-30',
+31'-45') — verificado por búsqueda web (BeSoccer usa brackets de 15 min,
+no de 30) contra dos fuentes independientes; no se pudo renderizar una
+página de partido en vivo (403), así que la confianza es media-alta, no
+absoluta.
 """
 
 import os
@@ -24,6 +34,8 @@ import os
 import anthropic
 import streamlit as st
 from dotenv import load_dotenv
+
+from modules import etiquetas_mercado as em
 
 load_dotenv()
 
@@ -35,21 +47,26 @@ AVISO_PERMANENTE = (
     "oficial de señales de BetVision AI y no generan recomendaciones automáticas."
 )
 
-# Definición única de los 4 mercados: (clave, título visible, campos [(etiqueta, sufijo_key)], prefijo_key).
+# Definición única de los 4 mercados: (clave, campos [(etiqueta, sufijo_key)], prefijo_key).
+# La clave es también la clave canónica de modules.etiquetas_mercado — el título visible
+# se calcula siempre con em.titulo_mercado(clave), nunca hardcodeado aquí.
 # Se usa tanto para renderizar los formularios como para el resumen de estado (leído de
 # session_state antes de que los widgets de este mismo rerun se hayan vuelto a instanciar).
 _DEFINICIONES_MERCADOS = [
-    ("1X2 HT", "Resultado al Descanso (1X2 HT)",
+    ("1X2 HT",
      [("Local", "local"), ("Empate", "empate"), ("Visitante", "visitante")], "fh_1x2"),
-    ("O/U 0.5 HT", "Over/Under 0.5 Goles HT",
+    ("O/U 0.5 HT",
      [("Over 0.5", "over"), ("Under 0.5", "under")], "fh_ou05"),
-    ("O/U 1.5 HT", "Over/Under 1.5 Goles HT",
+    ("O/U 1.5 HT",
      [("Over 1.5", "over"), ("Under 1.5", "under")], "fh_ou15"),
-    ("Primer en marcar", "Primer Equipo en Marcar",
+    ("Primer en marcar",
      [("Local", "local"), ("Visitante", "visitante"), ("Ninguno", "ninguno")], "fh_1marca"),
 ]
 
-_CAMPOS_STATS = ["pct_marca", "pct_encaja", "pct_marca_primero", "pct_recibe_primero", "goles_030", "goles_3145"]
+_CAMPOS_STATS = [
+    "pct_marca", "pct_encaja", "pct_marca_primero", "pct_recibe_primero",
+    "goles_115", "goles_1630", "goles_3145",
+]
 
 _PALETA_BARRAS = ["#2563eb", "#f5a623", "#64748b", "#0d9488"]
 
@@ -153,20 +170,22 @@ def _resultado_mercado(campos: list[tuple[str, str]], key_prefix: str) -> dict |
     return resultado
 
 
-def _etiqueta_visible(etiqueta_canonica: str, nombre_local: str, nombre_visit: str) -> str:
+def _etiqueta_visible(clave_mercado: str, etiqueta_canonica: str, nombre_local: str, nombre_visit: str) -> str:
     """
-    Sustituye las etiquetas canónicas "Local"/"Visitante" por el nombre real del
-    equipo en todo lo que se muestra en pantalla (inputs, tarjetas, panel
-    comparativo, prompt IA). Las claves internas (cuotas/implicitas/normalizadas)
-    siguen indexadas por "Local"/"Visitante" — solo cambia el texto visible.
-    Los mercados O/U no tienen outcomes "Local"/"Visitante", así que quedan
-    intactos automáticamente (son del partido, no de un equipo).
+    Traduce una etiqueta canónica ("Local"/"Visitante"/"Over 0.5"/...) al texto visible,
+    según el vocabulario Codere central (modules/etiquetas_mercado.py):
+      - "1X2 HT": "Local"/"Visitante" -> "Gana {equipo}", "Empate" queda igual.
+      - "Primer en marcar": "Local"/"Visitante" -> nombre del equipo tal cual,
+        "Ninguno" -> "Sin Gol" (así lo llama Codere, no "Ninguno").
+      - Mercados O/U: "Over X"/"Under X" -> "Más de X"/"Menos de X".
+    Las claves internas (cuotas/implicitas/normalizadas) siguen indexadas por la
+    etiqueta canónica — esta función solo decide qué texto se muestra en pantalla.
     """
-    if etiqueta_canonica == "Local":
-        return nombre_local
-    if etiqueta_canonica == "Visitante":
-        return nombre_visit
-    return etiqueta_canonica
+    if clave_mercado == "Primer en marcar":
+        return em.outcome_primer_marcador(etiqueta_canonica, nombre_local, nombre_visit)
+    if etiqueta_canonica in ("Local", "Empate", "Visitante"):
+        return em.outcome_1x2(etiqueta_canonica, nombre_local, nombre_visit)
+    return em.outcome_ou(etiqueta_canonica)
 
 
 def _barra_probabilidad(etiqueta: str, pct: float, cuota: float, implicita_pct: float, color: str) -> str:
@@ -184,7 +203,7 @@ def _barra_probabilidad(etiqueta: str, pct: float, cuota: float, implicita_pct: 
     )
 
 
-def _tarjetas_probabilidad(resultado: dict, nombre_local: str, nombre_visit: str) -> None:
+def _tarjetas_probabilidad(clave_mercado: str, resultado: dict, nombre_local: str, nombre_visit: str) -> None:
     """Fila de tarjetas (una por resultado) con barra proporcional y porcentaje grande."""
     outcomes = list(resultado["normalizadas"].items())
     cols = st.columns(len(outcomes))
@@ -192,7 +211,7 @@ def _tarjetas_probabilidad(resultado: dict, nombre_local: str, nombre_visit: str
         cuota     = resultado["cuotas"][etiqueta]
         implicita = resultado["implicitas"][etiqueta] * 100
         color     = _PALETA_BARRAS[i % len(_PALETA_BARRAS)]
-        etiqueta_visible = _etiqueta_visible(etiqueta, nombre_local, nombre_visit)
+        etiqueta_visible = _etiqueta_visible(clave_mercado, etiqueta, nombre_local, nombre_visit)
         with col:
             st.markdown(
                 _barra_probabilidad(etiqueta_visible, prob * 100, cuota, implicita, color),
@@ -201,18 +220,20 @@ def _tarjetas_probabilidad(resultado: dict, nombre_local: str, nombre_visit: str
 
 
 def _seccion_mercado(
-    titulo: str, campos: list[tuple[str, str]], key_prefix: str,
+    clave_mercado: str, campos: list[tuple[str, str]], key_prefix: str,
     nombre_local: str, nombre_visit: str,
 ) -> dict | None:
     """
     Renderiza — en una sola fila con st.columns — el formulario de cuotas de un mercado,
     y sus tarjetas de probabilidad inmediatamente debajo (misma tarjeta, no en otra sección).
     campos: lista de (etiqueta, sufijo_key) — SIEMPRE canónicas ("Local"/"Visitante"/...),
-    usadas para las claves internas. Lo único que cambia con nombre_local/nombre_visit es el
-    texto mostrado (label del input, tarjetas, título) vía _etiqueta_visible(); los mercados
-    O/U no tienen etiquetas "Local"/"Visitante" así que no se ven afectados.
+    usadas para las claves internas. El título visible sale de em.titulo_mercado(clave_mercado);
+    lo único que cambia con nombre_local/nombre_visit es el texto mostrado (label del input,
+    tarjetas) vía _etiqueta_visible(); los mercados O/U no tienen etiquetas "Local"/"Visitante"
+    así que no se ven afectados por el nombre de equipo.
     Devuelve el resultado de _resultado_mercado para el resumen de estado y el panel comparativo.
     """
+    titulo = em.titulo_mercado(clave_mercado)
     tiene_nombres = nombre_local != "Local" or nombre_visit != "Visitante"
     titulo_visible = f"{titulo} — {nombre_local} vs {nombre_visit}" if tiene_nombres else titulo
     st.markdown(f'<div class="titulo-tarjeta">{titulo_visible}</div>', unsafe_allow_html=True)
@@ -222,7 +243,7 @@ def _seccion_mercado(
         key = f"{key_prefix}_{sufijo}"
         with col:
             st.number_input(
-                _etiqueta_visible(etiqueta, nombre_local, nombre_visit),
+                _etiqueta_visible(clave_mercado, etiqueta, nombre_local, nombre_visit),
                 min_value=0.0, max_value=100.0,
                 value=st.session_state.get(key), step=0.01, key=key,
                 placeholder="—", help="Cuota decimal (ej. 2.05). Vacío si no la tienes.",
@@ -240,7 +261,7 @@ def _seccion_mercado(
             unsafe_allow_html=True,
         )
     else:
-        _tarjetas_probabilidad(resultado, nombre_local, nombre_visit)
+        _tarjetas_probabilidad(clave_mercado, resultado, nombre_local, nombre_visit)
 
     return resultado
 
@@ -274,9 +295,12 @@ def _seccion_stats_equipo(nombre: str, key_prefix: str) -> dict:
     """
     Bloque de datos estadísticos opcionales por equipo (fuente manual: BeSoccer/Flashscore/SofaScore).
     El nombre del equipo se resuelve arriba del formulario (_seccion_nombres_equipos) y
-    llega aquí ya decidido — este bloque solo aporta los 6 campos numéricos.
+    llega aquí ya decidido — este bloque solo aporta los 7 campos numéricos.
     Un campo sin rellenar queda en None (dato ausente ≠ 0): placeholder "—", value=None nativo de
     Streamlit 1.58 — sin valor por defecto en 0.
+
+    Goles por tramo en brackets de 15' (1'-15' / 16'-30' / 31'-45'), como los muestra BeSoccer,
+    para que el usuario copie el dato tal cual sin tener que convertir tramos.
     """
     col_a, col_b = st.columns(2)
     with col_a:
@@ -290,11 +314,6 @@ def _seccion_stats_equipo(nombre: str, key_prefix: str) -> dict:
             value=st.session_state.get(f"{key_prefix}_pct_marca_primero"),
             step=1, key=f"{key_prefix}_pct_marca_primero", placeholder="—",
         )
-        goles_030 = st.number_input(
-            "Goles en primeros 30'", min_value=0, max_value=50,
-            value=st.session_state.get(f"{key_prefix}_goles_030"),
-            step=1, key=f"{key_prefix}_goles_030", placeholder="—",
-        )
     with col_b:
         pct_encaja = st.number_input(
             "% partidos encajando en 1ª parte", min_value=0, max_value=100,
@@ -306,8 +325,24 @@ def _seccion_stats_equipo(nombre: str, key_prefix: str) -> dict:
             value=st.session_state.get(f"{key_prefix}_pct_recibe_primero"),
             step=1, key=f"{key_prefix}_pct_recibe_primero", placeholder="—",
         )
+
+    st.caption("Goles por tramo (BeSoccer)")
+    col_t1, col_t2, col_t3 = st.columns(3)
+    with col_t1:
+        goles_115 = st.number_input(
+            "Goles 1'-15'", min_value=0, max_value=50,
+            value=st.session_state.get(f"{key_prefix}_goles_115"),
+            step=1, key=f"{key_prefix}_goles_115", placeholder="—",
+        )
+    with col_t2:
+        goles_1630 = st.number_input(
+            "Goles 16'-30'", min_value=0, max_value=50,
+            value=st.session_state.get(f"{key_prefix}_goles_1630"),
+            step=1, key=f"{key_prefix}_goles_1630", placeholder="—",
+        )
+    with col_t3:
         goles_3145 = st.number_input(
-            "Goles en minutos 31'-45'", min_value=0, max_value=50,
+            "Goles 31'-45'", min_value=0, max_value=50,
             value=st.session_state.get(f"{key_prefix}_goles_3145"),
             step=1, key=f"{key_prefix}_goles_3145", placeholder="—",
         )
@@ -318,13 +353,14 @@ def _seccion_stats_equipo(nombre: str, key_prefix: str) -> dict:
         "pct_encaja": pct_encaja,
         "pct_marca_primero": pct_marca_primero,
         "pct_recibe_primero": pct_recibe_primero,
-        "goles_030": goles_030,
+        "goles_115": goles_115,
+        "goles_1630": goles_1630,
         "goles_3145": goles_3145,
     }
 
 
 def _stats_completitud(prefix_local: str, prefix_visit: str) -> str:
-    """"Sin introducir" / "Parciales (N/12)" / "Completos" según cuántos de los 12 campos hay."""
+    """"Sin introducir" / "Parciales (N/14)" / "Completos" según cuántos de los 14 campos hay."""
     total_campos = len(_CAMPOS_STATS) * 2
     rellenos = sum(
         1
@@ -430,7 +466,8 @@ def _panel_comparativo(resultados_mercados: dict, stats_local: dict, stats_visit
             '<div class="etiqueta-seccion">Probabilidades normalizadas (mercado)</div>',
             unsafe_allow_html=True,
         )
-        for titulo, resultado in resultados_mercados.items():
+        for clave, resultado in resultados_mercados.items():
+            titulo = em.titulo_mercado(clave)
             if resultado is None or not resultado["en_rango"]:
                 st.markdown(
                     f'<div class="fila-prob"><span class="texto-apagado">{titulo}:</span> '
@@ -439,7 +476,7 @@ def _panel_comparativo(resultados_mercados: dict, stats_local: dict, stats_visit
                 )
                 continue
             partes = " · ".join(
-                f"{_etiqueta_visible(k, nombre_local, nombre_visit)} {v * 100:.1f}%"
+                f"{_etiqueta_visible(clave, k, nombre_local, nombre_visit)} {v * 100:.1f}%"
                 for k, v in resultado["normalizadas"].items()
             )
             st.markdown(
@@ -470,9 +507,10 @@ def _panel_comparativo(resultados_mercados: dict, stats_local: dict, stats_visit
                 unsafe_allow_html=True,
             )
             st.markdown(
-                f'<div class="fila-prob"><span class="texto-apagado">Goles 0-30\':</span> '
-                f'{_fmt_valor(stats["goles_030"])} · '
-                f'<span class="texto-apagado">Goles 31-45\':</span> {_fmt_valor(stats["goles_3145"])}</div>',
+                f'<div class="fila-prob"><span class="texto-apagado">Goles 1\'-15\':</span> '
+                f'{_fmt_valor(stats["goles_115"])} · '
+                f'<span class="texto-apagado">Goles 16\'-30\':</span> {_fmt_valor(stats["goles_1630"])} · '
+                f'<span class="texto-apagado">Goles 31\'-45\':</span> {_fmt_valor(stats["goles_3145"])}</div>',
                 unsafe_allow_html=True,
             )
     st.markdown('</div>', unsafe_allow_html=True)   # cierre .fh-compact
@@ -496,8 +534,8 @@ def _panel_comparativo(resultados_mercados: dict, stats_local: dict, stats_visit
         )
     else:
         st.caption(
-            "Introduce cuotas válidas en 'Primer equipo en marcar' o 'O/U 0.5 HT' "
-            "para ver la comparación real."
+            f"Introduce cuotas válidas en '{em.titulo_mercado('Primer en marcar')}' o "
+            f"'{em.titulo_mercado('O/U 0.5 HT')}' para ver la comparación real."
         )
 
 
@@ -508,8 +546,9 @@ def _stats_rellenados(stats: dict) -> dict:
         "% encaja en 1ª parte": stats["pct_encaja"],
         "% marca primero":      stats["pct_marca_primero"],
         "% recibe primero":     stats["pct_recibe_primero"],
-        "goles 0-30'":          stats["goles_030"],
-        "goles 31-45'":         stats["goles_3145"],
+        "goles 1'-15'":         stats["goles_115"],
+        "goles 16'-30'":        stats["goles_1630"],
+        "goles 31'-45'":        stats["goles_3145"],
     }
     return {k: v for k, v in campos.items() if v is not None}
 
@@ -525,15 +564,16 @@ def _construir_prompt_ia(resultados_mercados: dict, stats_local: dict, stats_vis
     nombre_visit = stats_visit["nombre"]
 
     bloques_mercado = []
-    for titulo, resultado in resultados_mercados.items():
+    for clave, resultado in resultados_mercados.items():
         if resultado is None or not resultado.get("en_rango"):
             continue
+        titulo = em.titulo_mercado(clave)
         cuotas_txt = ", ".join(
-            f"{_etiqueta_visible(k, nombre_local, nombre_visit)} @ {v:.2f}"
+            f"{_etiqueta_visible(clave, k, nombre_local, nombre_visit)} @ {v:.2f}"
             for k, v in resultado["cuotas"].items()
         )
         norm_txt = ", ".join(
-            f"{_etiqueta_visible(k, nombre_local, nombre_visit)} {v * 100:.1f}%"
+            f"{_etiqueta_visible(clave, k, nombre_local, nombre_visit)} {v * 100:.1f}%"
             for k, v in resultado["normalizadas"].items()
         )
         bloques_mercado.append(
@@ -645,7 +685,7 @@ def mostrar() -> None:
     # Resumen de estado — leído de session_state antes de renderizar los widgets de abajo.
     resultados_preview = {
         clave: _resultado_mercado(campos, prefix)
-        for clave, _titulo, campos, prefix in _DEFINICIONES_MERCADOS
+        for clave, campos, prefix in _DEFINICIONES_MERCADOS
     }
     _resumen_estado(resultados_preview)
 
@@ -656,10 +696,10 @@ def mostrar() -> None:
     st.markdown('</div>', unsafe_allow_html=True)
 
     resultados_mercados: dict = {}
-    for clave, titulo_seccion, campos, prefix in _DEFINICIONES_MERCADOS:
+    for clave, campos, prefix in _DEFINICIONES_MERCADOS:
         st.markdown('<div class="tarjeta fh-tarjeta">', unsafe_allow_html=True)
         resultados_mercados[clave] = _seccion_mercado(
-            titulo_seccion, campos, prefix, nombre_local, nombre_visit,
+            clave, campos, prefix, nombre_local, nombre_visit,
         )
         st.markdown('</div>', unsafe_allow_html=True)
 

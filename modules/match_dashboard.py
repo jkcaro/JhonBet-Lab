@@ -16,6 +16,7 @@ import streamlit as st
 from modules import analysis as _analysis_mod
 from modules import claude_analysis as _ca
 from modules import claude_history as _history_mod
+from modules import etiquetas_mercado as em
 from modules.scada_charts import (
     gauge_donut_gris, tarjeta_veredicto_html, panel_info_partido_html,
     tabla_ultimos_analisis_html, semaforo_html, DEOP_PETROLEO, DEOP_VERDE,
@@ -27,18 +28,25 @@ _CONF_NUM = {"Alto": 85.0, "Medio": 50.0, "Bajo": 18.0}
 _MAPA_CLAVE_P = {"Local": "p_local", "Empate": "p_empate", "Visitante": "p_visitante"}
 
 
-def _tarjeta_de(mercado: str, resultado: dict) -> str:
-    """Construye la tarjeta amarilla para un mercado a partir de su resultado."""
+def _tarjeta_de(mercado: str, resultado: dict, nombre_local: str, nombre_visit: str) -> str:
+    """
+    Construye la tarjeta amarilla para un mercado a partir de su resultado.
+    "mercado" es la clave canónica de MERCADOS_DASHBOARD (modules/claude_analysis.py,
+    SIN TOCAR en esta fase) — las comparaciones `mercado == "Victoria 1X2"` siguen
+    exactamente igual; solo cambia el texto que se pinta (título/valor) vía el
+    diccionario central modules/etiquetas_mercado.py.
+    """
     punt   = resultado["puntuacion"]
     datos_m = resultado["datos"]
     estado = punt.get("estado", "NO APOSTAR")
 
     if mercado == "Victoria 1X2":
-        titulo = "Victoria 1X2"
+        titulo = em.titulo_mercado("Victoria 1X2")
         v1x2   = datos_m.get("victoria1x2_modelo", {})
-        valor  = v1x2.get("mejor_seleccion", "—")
+        sel    = v1x2.get("mejor_seleccion", "")
+        valor  = em.outcome_1x2(sel, nombre_local, nombre_visit) if sel else "—"
     elif "Ambos Marcan" in mercado:
-        titulo = "Ambos Marcan"
+        titulo = em.titulo_mercado("Ambos Marcan")
         btts   = datos_m.get("btts_si_modelo", {})
         try:
             p_si = float(str(btts.get("p_btts_si", "0%")).replace("%", ""))
@@ -46,19 +54,19 @@ def _tarjeta_de(mercado: str, resultado: dict) -> str:
             p_si = 0.0
         valor = "Sí" if p_si >= 50 else "No"
     elif "Más de 1.5" in mercado or "Mas de 1.5" in mercado:
-        titulo = "Más 1.5 Goles"
+        titulo = f"{em.outcome_ou('Over 1.5')} — Total Goles"
         p_modelo = datos_m.get("mas15_modelo", {}).get("p_mas15", "—")
         if punt.get("sin_cuota"):
             valor = f"P: {p_modelo} | Sin cuota"
         else:
-            valor = f"P: {p_modelo} | Edge: {punt.get('edge', 0.0):+.1f}%"
+            valor = f"P: {p_modelo} | {em.EDGE_LABEL.capitalize()}: {punt.get('edge', 0.0):+.1f}%"
     else:
-        titulo = "Menos 1.5 Goles"
+        titulo = f"{em.outcome_ou('Under 1.5')} — Total Goles"
         p_modelo = datos_m.get("menos15_modelo", {}).get("p_menos15", "—")
         if punt.get("sin_cuota"):
             valor = f"P: {p_modelo} | Sin cuota"
         else:
-            valor = f"P: {p_modelo} | Edge: {punt.get('edge', 0.0):+.1f}%"
+            valor = f"P: {p_modelo} | {em.EDGE_LABEL.capitalize()}: {punt.get('edge', 0.0):+.1f}%"
 
     return tarjeta_veredicto_html(titulo, valor, estado)
 
@@ -215,11 +223,15 @@ def mostrar() -> None:
         st.caption("Pulsa **Analizar Partido (4 mercados)** para generar los 4 veredictos de este partido.")
         return
 
+    nombre_local = partido.split(" vs ")[0].strip() if " vs " in partido else "Local"
+    nombre_visit = partido.split(" vs ")[1].strip() if " vs " in partido else "Visitante"
+
     # ── 4 tarjetas amarillas + semáforo circular de cada mercado ────────────────
     cols_cards = st.columns(4)
     for col, mercado in zip(cols_cards, _ca.MERCADOS_DASHBOARD):
         with col:
-            st.markdown(_tarjeta_de(mercado, resultados[mercado]), unsafe_allow_html=True)
+            st.markdown(_tarjeta_de(mercado, resultados[mercado], nombre_local, nombre_visit),
+                        unsafe_allow_html=True)
             _punt_m = resultados[mercado]["puntuacion"]
             st.markdown(semaforo_html(_punt_m.get("edge", 0.0), _punt_m), unsafe_allow_html=True)
 
@@ -239,13 +251,13 @@ def mostrar() -> None:
 
     cols_gauges = st.columns(3)
     with cols_gauges[0]:
-        st.plotly_chart(gauge_donut_gris(max(0.0, edge_max), "Edge %", paleta["dorado"]),
+        st.plotly_chart(gauge_donut_gris(max(0.0, edge_max), f"{em.EDGE_LABEL.capitalize()} %", paleta["dorado"]),
                         use_container_width=True, config={"displayModeBar": False}, key="dash_gauge_edge")
     with cols_gauges[1]:
         st.plotly_chart(gauge_donut_gris(confianza_pct, "Confianza %", paleta["petroleo"]),
                         use_container_width=True, config={"displayModeBar": False}, key="dash_gauge_conf")
     with cols_gauges[2]:
-        st.plotly_chart(gauge_donut_gris(p_victoria, "P(Victoria) %", DEOP_VERDE),
+        st.plotly_chart(gauge_donut_gris(p_victoria, "Probabilidad de Victoria %", DEOP_VERDE),
                         use_container_width=True, config={"displayModeBar": False}, key="dash_gauge_pvic")
 
     # ── Cuadro info partido + tabla últimos análisis ────────────────────────────

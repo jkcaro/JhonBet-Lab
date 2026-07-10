@@ -4,6 +4,8 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from modules import etiquetas_mercado as em
+
 RUTA_CUOTAS = Path(__file__).parent.parent / "data" / "odds.csv"
 
 CASAS_APUESTAS = ["codere", "bet365", "betfair"]
@@ -77,9 +79,14 @@ def mostrar():
         if partido_activo:
             st.caption(f"Sin cuotas para '{partido_activo}' ({mercado_clave}). Mostrando datos disponibles.")
 
+    nombre_local = "Local"
+    nombre_visit = "Visitante"
+    if " vs " in partido_activo:
+        _partes = partido_activo.split(" vs ", 1)
+        nombre_local, nombre_visit = _partes[0].strip(), _partes[1].strip()
+
     # Construir mapa resultado → cuotas por casa
-    # Filas: Local, Empate, Visitante  →  columnas encabezado: 1, X, 2
-    etiquetas_col = {"Local": "1", "Empate": "X", "Visitante": "2"}
+    # Filas: Local, Empate, Visitante  →  columnas encabezado: 1, X, 2 (nomenclatura Codere)
     resultados_orden = ["Local", "Empate", "Visitante"]
 
     # {resultado: {casa: cuota}}
@@ -103,9 +110,13 @@ def mostrar():
             if val > mejor_global["valor"]:
                 mejor_global = {"res": res, "casa": NOMBRE_CASAS[casa], "valor": val}
 
-    # ── Tarjetas de cuota grande: LOCAL / EMPATE / VISITANTE ──
+    # ── Tarjetas de cuota grande: GANA LOCAL / EMPATE / GANA VISITANTE ──
     cols = st.columns(3)
-    etiq_display = {"Local": "LOCAL", "Empate": "EMPATE", "Visitante": "VISITANTE"}
+    etiq_display = {
+        "Local":     em.outcome_1x2("Local", nombre_local, nombre_visit).upper(),
+        "Empate":    "EMPATE",
+        "Visitante": em.outcome_1x2("Visitante", nombre_local, nombre_visit).upper(),
+    }
     col_labels    = {"Local": "1", "Empate": "X", "Visitante": "2"}
     for idx, res in enumerate(resultados_orden):
         mejor_val = mejor_por_resultado.get(res, 0.0)

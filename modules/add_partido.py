@@ -7,6 +7,7 @@ analysis.py para no romper nada; simplemente ya no se llama desde el sidebar.
 
 import streamlit as st
 
+from modules import etiquetas_mercado as em
 from modules import football_data_api as fd_api
 from modules.analysis import _guardar_partido_manual, _cuota_val
 
@@ -203,6 +204,9 @@ div[data-testid="stAppViewContainer"] .stSelectbox label {
             placeholder="Ej: La Liga", key="pm_liga",
         )
 
+    _nombre_l = equipo_local.strip() or "Local"
+    _nombre_v = equipo_visitante.strip() or "Visitante"
+
     # ── Forma reciente — autocompletada al cargar desde Football-Data.org ────
     _sec("Forma reciente (últimos 5)", opcional=True)
     col_fl, col_fv = st.columns(2)
@@ -220,67 +224,67 @@ div[data-testid="stAppViewContainer"] .stSelectbox label {
         )
 
     # ── FILA 2 · Cuotas 1X2 + xG ────────────────────────────────────────────
-    _sec("Cuotas 1X2  ·  xG esperado")
+    _sec(f"{em.titulo_mercado('1X2')}  ·  xG (goles esperados)")
     col_cl, col_ce, col_cv, col_xl, col_xv = st.columns(5)
     with col_cl:
         cuota_local = st.number_input(
-            "Cuota 1 (Local)", min_value=1.01, max_value=100.0,
+            f"Cuota — {em.outcome_1x2('Local', _nombre_l, _nombre_v)}", min_value=1.01, max_value=100.0,
             value=_cuota_val(prefill, "cuota_local", 2.00), step=0.05, key="pm_cl",
         )
     with col_ce:
         cuota_empate = st.number_input(
-            "Cuota X (Empate)", min_value=1.01, max_value=100.0,
+            "Cuota — Empate", min_value=1.01, max_value=100.0,
             value=_cuota_val(prefill, "cuota_empate", 3.20), step=0.05, key="pm_ce",
         )
     with col_cv:
         cuota_visitante = st.number_input(
-            "Cuota 2 (Visit.)", min_value=1.01, max_value=100.0,
+            f"Cuota — {em.outcome_1x2('Visitante', _nombre_l, _nombre_v)}", min_value=1.01, max_value=100.0,
             value=_cuota_val(prefill, "cuota_visitante", 3.50), step=0.05, key="pm_cv",
         )
     with col_xl:
         xg_local = st.number_input(
-            "xG Local", min_value=0.1, max_value=5.0, value=1.5, step=0.1, key="pm_xgl",
+            f"xG {_nombre_l}", min_value=0.1, max_value=5.0, value=1.5, step=0.1, key="pm_xgl",
         )
     with col_xv:
         xg_visitante = st.number_input(
-            "xG Visitante", min_value=0.1, max_value=5.0, value=1.2, step=0.1, key="pm_xgv",
+            f"xG {_nombre_v}", min_value=0.1, max_value=5.0, value=1.2, step=0.1, key="pm_xgv",
         )
 
     # ── DATOS ADICIONALES (colapsados) ────────────────────────────────────────
     with st.expander("➕ Datos adicionales (opcional)", expanded=False):
 
-        _sec("Cuotas Ambos Marcan", opcional=True)
+        _sec(em.titulo_mercado("Ambos Marcan"), opcional=True)
         col_si, col_no = st.columns(2)
         with col_si:
             cuota_btts_si = st.number_input(
-                "Ambos Marcan — Sí", min_value=0.0, max_value=100.0,
+                "Sí", min_value=0.0, max_value=100.0,
                 value=0.0, step=0.05, key="pm_btts_si",
                 help="Deja en 0 si no tienes esta cuota",
             )
         with col_no:
             cuota_btts_no = st.number_input(
-                "Ambos Marcan — No", min_value=0.0, max_value=100.0,
+                "No", min_value=0.0, max_value=100.0,
                 value=0.0, step=0.05, key="pm_btts_no",
                 help="Deja en 0 si no tienes esta cuota",
             )
 
-        _sec("Cuotas Resultado 1ª Parte", opcional=True)
+        _sec(em.titulo_mercado("1X2 HT"), opcional=True)
         col_1tl, col_1te, col_1tv = st.columns(3)
         with col_1tl:
             cuota_1t_local = st.number_input(
-                "Local 1T", min_value=0.0, max_value=100.0,
+                f"{em.outcome_1x2('Local', _nombre_l, _nombre_v)} (1ª P)", min_value=0.0, max_value=100.0,
                 value=0.0, step=0.05, key="pm_1t_local",
                 help="Deja en 0 si no tienes esta cuota",
             )
         with col_1te:
             cuota_1t_empate = st.number_input(
-                "Empate 1T", min_value=0.0, max_value=100.0,
+                "Empate (1ª P)", min_value=0.0, max_value=100.0,
                 value=0.0, step=0.05, key="pm_1t_empate",
                 help="Deja en 0 si no tienes esta cuota",
             )
         with col_1tv:
             cuota_1t_visitante = st.number_input(
-                "Visitante 1T", min_value=0.0, max_value=100.0,
+                f"{em.outcome_1x2('Visitante', _nombre_l, _nombre_v)} (1ª P)", min_value=0.0, max_value=100.0,
                 value=0.0, step=0.05, key="pm_1t_visitante",
                 help="Deja en 0 si no tienes esta cuota",
             )

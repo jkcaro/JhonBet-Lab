@@ -100,10 +100,10 @@ _CLAVES_SESION = [
     "fh_1marca_local", "fh_1marca_visitante", "fh_1marca_ninguno",
     "fh_stat_local_nombre", "fh_stat_local_pct_marca", "fh_stat_local_pct_encaja",
     "fh_stat_local_pct_marca_primero", "fh_stat_local_pct_recibe_primero",
-    "fh_stat_local_goles_030", "fh_stat_local_goles_3145",
+    "fh_stat_local_goles_115", "fh_stat_local_goles_1630", "fh_stat_local_goles_3145",
     "fh_stat_visit_nombre", "fh_stat_visit_pct_marca", "fh_stat_visit_pct_encaja",
     "fh_stat_visit_pct_marca_primero", "fh_stat_visit_pct_recibe_primero",
-    "fh_stat_visit_goles_030", "fh_stat_visit_goles_3145",
+    "fh_stat_visit_goles_115", "fh_stat_visit_goles_1630", "fh_stat_visit_goles_3145",
     "fh_analisis_ia",
 ]
 

@@ -5,6 +5,8 @@ import pandas as pd
 import streamlit as st
 from scipy.stats import poisson
 
+from modules import etiquetas_mercado as em
+
 RUTA_PARTIDOS = Path(__file__).parent.parent / "data" / "matches.csv"
 MAXIMO_GOLES  = 10
 
@@ -87,21 +89,24 @@ def mostrar():
 
     pred = calcular_prediccion_completa(xg_local, xg_visitante)
 
+    nombre_local = partido_activo.split(" vs ")[0].strip() if " vs " in partido_activo else "Local"
+    nombre_visit = partido_activo.split(" vs ")[1].strip() if " vs " in partido_activo else "Visitante"
+
     label_exacto = f"{pred['resultado_exacto']} (más probable)"
     barras_html = (
-        _barra_prediccion("Over 2.5 Goles",         pred["over25"],         "#00c853") +
-        _barra_prediccion("Over 1.5 Goles",         pred["over15"],         "#00e5ff") +
-        _barra_prediccion("Ambos Marcan",            pred["ambos_marcan"],   "#6a1b9a") +
-        _barra_prediccion("Victoria Local",          pred["victoria_local"], "#e65100") +
-        _barra_prediccion("Empate",                  pred["empate"],         "#1565c0") +
+        _barra_prediccion(f"{em.outcome_ou('Over 2.5')} — Total Goles",  pred["over25"],         "#00c853") +
+        _barra_prediccion(f"{em.outcome_ou('Over 1.5')} — Total Goles",  pred["over15"],         "#00e5ff") +
+        _barra_prediccion(em.titulo_mercado("Ambos Marcan"),             pred["ambos_marcan"],   "#6a1b9a") +
+        _barra_prediccion(em.outcome_1x2("Local", nombre_local, nombre_visit),    pred["victoria_local"], "#e65100") +
+        _barra_prediccion("Empate",                                      pred["empate"],         "#1565c0") +
         _barra_prediccion(label_exacto,              pred["prob_resultado"], "#78909c")
     )
 
     nota_valor = ""
     if pred["over25"] >= 60:
-        nota_valor = '<div class="texto-apagado" style="margin-top:10px;font-size:12px;">• Valor para Over 2.5 si cuota ≥ 1.75</div>'
+        nota_valor = f'<div class="texto-apagado" style="margin-top:10px;font-size:12px;">• Valor para {em.outcome_ou("Over 2.5")} si cuota ≥ 1.75</div>'
     elif pred["over15"] >= 75:
-        nota_valor = '<div class="texto-apagado" style="margin-top:10px;font-size:12px;">• Valor para Over 1.5 si cuota ≥ 1.35</div>'
+        nota_valor = f'<div class="texto-apagado" style="margin-top:10px;font-size:12px;">• Valor para {em.outcome_ou("Over 1.5")} si cuota ≥ 1.35</div>'
 
     st.markdown(
         f'<div style="font-size:11px;color:#aab;margin-bottom:10px;">• Pronóstico Poisson / xG</div>',
@@ -109,25 +114,25 @@ def mostrar():
     )
     st.markdown(barras_html + nota_valor, unsafe_allow_html=True)
 
-    # Simulador xG interactivo
-    with st.expander("Simulador xG personalizado"):
+    # Simulador xG interactivo (xG = goles esperados)
+    with st.expander("Simulador xG personalizado (goles esperados)"):
         col_i, col_d = st.columns(2)
         with col_i:
-            xg_sim_local = st.slider("xG Local", 0.5, 4.0, float(xg_local), 0.1, key="sim_local")
+            xg_sim_local = st.slider(f"xG {nombre_local}", 0.5, 4.0, float(xg_local), 0.1, key="sim_local")
         with col_d:
-            xg_sim_visit = st.slider("xG Visitante", 0.5, 4.0, float(xg_visitante), 0.1, key="sim_visit")
+            xg_sim_visit = st.slider(f"xG {nombre_visit}", 0.5, 4.0, float(xg_visitante), 0.1, key="sim_visit")
 
         pred_sim = calcular_prediccion_completa(xg_sim_local, xg_sim_visit)
 
         col1, col2, col3 = st.columns(3)
-        col1.metric("Victoria Local",    f"{pred_sim['victoria_local']}%")
-        col2.metric("Empate",            f"{pred_sim['empate']}%")
-        col3.metric("Victoria Visitante",f"{pred_sim['victoria_visitante']}%")
+        col1.metric(em.outcome_1x2("Local", nombre_local, nombre_visit),     f"{pred_sim['victoria_local']}%")
+        col2.metric("Empate",                                                f"{pred_sim['empate']}%")
+        col3.metric(em.outcome_1x2("Visitante", nombre_local, nombre_visit), f"{pred_sim['victoria_visitante']}%")
 
         col4, col5, col6 = st.columns(3)
-        col4.metric("Over 2.5",      f"{pred_sim['over25']}%")
-        col5.metric("Over 1.5",      f"{pred_sim['over15']}%")
-        col6.metric("Ambos Marcan",  f"{pred_sim['ambos_marcan']}%")
+        col4.metric(em.outcome_ou("Over 2.5"),        f"{pred_sim['over25']}%")
+        col5.metric(em.outcome_ou("Over 1.5"),        f"{pred_sim['over15']}%")
+        col6.metric(em.titulo_mercado("Ambos Marcan"), f"{pred_sim['ambos_marcan']}%")
 
         st.caption(
             f"Resultado más probable: **{pred_sim['resultado_exacto']}** "
