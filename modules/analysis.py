@@ -211,6 +211,7 @@ def _guardar_partido_manual(
     elo_local: float | None = None, elo_visit: float | None = None,
     motivacion: str = "", ultimo_partido: str = "No",
     cuota_o15: float = 0.0, cuota_u15: float = 0.0,
+    forma_local: str = "", forma_visitante: str = "",
 ) -> None:
     """
     Guarda el partido manual.
@@ -240,6 +241,8 @@ def _guardar_partido_manual(
         "elo_visit":        elo_visit if elo_visit is not None else "",
         "motivacion":       motivacion,
         "ultimo_partido":   ultimo_partido,
+        "forma_local":      forma_local,
+        "forma_visitante":  forma_visitante,
         "fecha":            _date.today().isoformat(),
     }])
     pd.concat([nueva_fila, df_p], ignore_index=True).to_csv(RUTA_PARTIDOS, index=False)
@@ -902,6 +905,10 @@ def mostrar():
     _ult_raw = str(fila.get("ultimo_partido", "") or "").strip()
     st.session_state["motivacion_partido"]       = _mot_raw or None
     st.session_state["ultimo_partido_temporada"] = _ult_raw if _ult_raw == "Sí" else None
+    # Forma reciente cargada desde Football-Data.org al añadir el partido (si la hay) —
+    # prefill editable de los campos "Forma reciente" en la página Claude AI.
+    st.session_state["forma_reciente_local_csv"] = str(fila.get("forma_local", "") or "").strip()
+    st.session_state["forma_reciente_visit_csv"] = str(fila.get("forma_visitante", "") or "").strip()
     st.session_state["probs_partido"] = {
         f"victoria_{nombre_local}": f"{probs['local']}%",
         "empate":                    f"{probs['empate']}%",

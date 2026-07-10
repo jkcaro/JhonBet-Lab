@@ -7,6 +7,7 @@ analysis.py para no romper nada; simplemente ya no se llama desde el sidebar.
 
 import streamlit as st
 
+from modules import football_data_api as fd_api
 from modules.analysis import _guardar_partido_manual, _cuota_val
 
 
@@ -77,6 +78,67 @@ div[data-testid="stAppViewContainer"] .stSelectbox label {
         unsafe_allow_html=True,
     )
 
+    # ── CARGAR PARTIDO REAL DESDE FOOTBALL-DATA.ORG ──────────────────────────
+    _sec("Cargar partido real (Football-Data.org)")
+    col_comp, col_btn_fd = st.columns([3, 1])
+    with col_comp:
+        competicion_nombre = st.selectbox(
+            "Competición", list(fd_api.COMPETICIONES.keys()),
+            key="fd_competicion", label_visibility="collapsed",
+        )
+    with col_btn_fd:
+        cargar_fd_click = st.button("🔄 Cargar partidos", key="btn_fd_cargar",
+                                     use_container_width=True)
+
+    if cargar_fd_click:
+        codigo = fd_api.COMPETICIONES[competicion_nombre]
+        try:
+            with st.spinner("Consultando Football-Data.org..."):
+                partidos_fd = fd_api.partidos_por_competicion(codigo)
+            st.session_state["fd_partidos"] = partidos_fd
+            st.session_state.pop("fd_match_sel", None)
+            if not partidos_fd:
+                st.info("No hay partidos programados en esta competición ahora mismo. Usa la entrada manual de abajo.")
+        except fd_api.FootballDataError as exc:
+            st.warning(f"⚠️ {exc} Puedes seguir con la entrada manual de abajo.")
+            st.session_state["fd_partidos"] = []
+
+    partidos_fd = st.session_state.get("fd_partidos", [])
+    if partidos_fd:
+        opciones_fd = ["-- Selecciona un partido --"] + [
+            f'{p["local"]} vs {p["visitante"]} — {p["fecha"][:10]} ({p["fase"]})'
+            for p in partidos_fd
+        ]
+        sel_fd = st.selectbox("Partidos disponibles:", opciones_fd, key="fd_sel_partido")
+        if sel_fd != "-- Selecciona un partido --":
+            if st.session_state.get("fd_match_sel") != sel_fd:
+                idx = opciones_fd.index(sel_fd) - 1
+                partido_fd = partidos_fd[idx]
+                st.session_state["fd_match_sel"] = sel_fd
+
+                forma_local_fd = forma_visit_fd = ""
+                try:
+                    with st.spinner("Calculando forma reciente (últimos 5)..."):
+                        forma_local_fd = fd_api.forma_reciente_equipo(partido_fd["local_id"])
+                        forma_visit_fd = fd_api.forma_reciente_equipo(partido_fd["visitante_id"])
+                except fd_api.FootballDataError as exc:
+                    st.warning(f"⚠️ No se pudo calcular la forma reciente: {exc}")
+
+                st.session_state["pm_prefill"] = {
+                    "equipo_local":     partido_fd["local"],
+                    "equipo_visitante": partido_fd["visitante"],
+                    "liga":             competicion_nombre,
+                    "forma_local":      forma_local_fd,
+                    "forma_visitante":  forma_visit_fd,
+                }
+                for k in ("pm_local", "pm_visitante", "pm_liga",
+                          "pm_forma_local", "pm_forma_visit"):
+                    st.session_state.pop(k, None)
+                st.rerun()
+
+    st.markdown("<hr style='border-color:var(--borde);margin:8px 0 4px'>",
+                unsafe_allow_html=True)
+
     # ── BÚSQUEDA EN THE ODDS API ─────────────────────────────────────────────
     _sec("Buscar equipo en The Odds API")
     col_t, col_b = st.columns([3, 1])
@@ -139,6 +201,22 @@ div[data-testid="stAppViewContainer"] .stSelectbox label {
         liga = st.text_input(
             "🏆 Liga / Competición", value=prefill.get("liga", ""),
             placeholder="Ej: La Liga", key="pm_liga",
+        )
+
+    # ── Forma reciente — autocompletada al cargar desde Football-Data.org ────
+    _sec("Forma reciente (últimos 5)", opcional=True)
+    col_fl, col_fv = st.columns(2)
+    with col_fl:
+        forma_local = st.text_input(
+            "Local", value=prefill.get("forma_local", ""),
+            placeholder="Ej: W,D,L,W,W", key="pm_forma_local",
+            help="Se autocompleta al cargar un partido desde Football-Data.org; también editable a mano.",
+        )
+    with col_fv:
+        forma_visitante = st.text_input(
+            "Visitante", value=prefill.get("forma_visitante", ""),
+            placeholder="Ej: L,D,W,W,L", key="pm_forma_visit",
+            help="Se autocompleta al cargar un partido desde Football-Data.org; también editable a mano.",
         )
 
     # ── FILA 2 · Cuotas 1X2 + xG ────────────────────────────────────────────
@@ -307,6 +385,7 @@ div[data-testid="stAppViewContainer"] .stSelectbox label {
                 cuota_1t_local, cuota_1t_empate, cuota_1t_visitante,
                 btts_local_5, btts_visit_5, elo_local, elo_visit,
                 motivacion, ultimo_partido,
+                forma_local=forma_local.strip(), forma_visitante=forma_visitante.strip(),
             )
             nombre = f"{equipo_local.strip()} vs {equipo_visitante.strip()}"
             guardado_msg = f"✅ '{nombre}' añadido correctamente."
@@ -336,7 +415,9 @@ def _limpiar_form() -> None:
         "pm_1t_local", "pm_1t_empate", "pm_1t_visitante",
         "pm_btts_l5", "pm_btts_v5", "pm_elo_l", "pm_elo_v",
         "pm_motivacion", "pm_ultimo_partido",
+        "pm_forma_local", "pm_forma_visit",
         "pm_prefill", "pm_resultados", "pm_match_sel",
+        "fd_partidos", "fd_match_sel", "fd_sel_partido",
         "pm_sel_label", "pm_buscar",
     ):
         st.session_state.pop(k, None)

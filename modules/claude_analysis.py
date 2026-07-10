@@ -1592,11 +1592,13 @@ def mostrar():
     with col_fl:
         forma_local = st.text_input(
             "Forma reciente local (últimos 5)*",
+            value=st.session_state.get("forma_reciente_local_csv", ""),
             placeholder="Ej: W,W,D,L,W", key="claude_forma_local",
         )
     with col_fv:
         forma_visit = st.text_input(
             "Forma reciente visitante (últimos 5)*",
+            value=st.session_state.get("forma_reciente_visit_csv", ""),
             placeholder="Ej: L,D,W,W,L", key="claude_forma_visit",
         )
     _forma_completa = bool(forma_local.strip()) and bool(forma_visit.strip())
