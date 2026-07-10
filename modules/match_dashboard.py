@@ -75,8 +75,8 @@ def _calcular_4_mercados(datos: dict) -> dict:
     """
     Calcula los 4 semáforos de MERCADOS_DASHBOARD de forma puramente
     matemática (Poisson + edge vs cuotas reales de odds.csv), sin llamar a
-    la API de Claude. Reutiliza sin modificar el mismo pipeline de
-    enriquecimiento/puntuación que usa modules.claude_analysis.analizar_4_mercados
+    la API de Claude. Reutiliza sin modificar el pipeline de
+    enriquecimiento/puntuación de modules.claude_analysis
     (_enriquecer_con_cuotas, _enriquecer_con_stats, _enriquecer_con_alertas,
     _enriquecer_para_mercado, _calcular_puntuacion). _calcular_poisson_local
     no se llama por separado: _enriquecer_para_mercado ya la invoca
@@ -87,8 +87,8 @@ def _calcular_4_mercados(datos: dict) -> dict:
     vacío; con "" ese fallback simplemente no encuentra nada (edge 0.0),
     igual que si Claude no hubiera devuelto un veredicto parseable.
 
-    Devuelve {mercado: {"texto": "", "datos": dict, "puntuacion": dict}} —
-    mismo formato que analizar_4_mercados(), sin el campo "texto" real.
+    Devuelve {mercado: {"texto": "", "datos": dict, "puntuacion": dict}},
+    sin el campo "texto" real.
     """
     base = copy.deepcopy(datos)
     base = _ca._enriquecer_con_cuotas(base)
