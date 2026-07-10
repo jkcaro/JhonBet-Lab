@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import streamlit as st
 
+from modules import etiquetas_mercado as em
 from modules.scada_charts import semaforo_mini_html
 
 os.makedirs(Path(__file__).parent.parent / "data", exist_ok=True)
@@ -273,7 +274,7 @@ def mostrar() -> None:
         f'<div class="hc-stat"><div class="hc-stat-val" style="color:{_RED};">{no_ap}</div>'
         f'<div class="hc-stat-lbl">No apostar</div></div>'
         f'<div class="hc-stat"><div class="hc-stat-val" style="color:{edge_col};">{sign}{edge_prom}%</div>'
-        f'<div class="hc-stat-lbl">Edge prom.</div></div>'
+        f'<div class="hc-stat-lbl">Ventaja prom.</div></div>'
         f'</div>',
         unsafe_allow_html=True,
     )
@@ -296,13 +297,16 @@ def mostrar() -> None:
             except Exception as exc:
                 st.error(f"Error al limpiar: {exc}")
 
-    # Aplicar filtro
+    # Aplicar filtro — compara tanto contra la clave canónica guardada como
+    # contra el texto visible nuevo, para que el usuario pueda buscar con
+    # cualquiera de los dos (p.ej. "1X2" o "quién gana").
     if filtro:
         _f = filtro.lower()
         historial_vis = [
             e for e in historial
             if _f in e.get("partido",  "").lower()
             or _f in e.get("mercado",  "").lower()
+            or _f in em.titulo_mercado(e.get("mercado", "")).lower()
             or _f in e.get("veredicto","").lower()
         ]
     else:
@@ -323,7 +327,10 @@ def mostrar() -> None:
     for i, entrada in enumerate(historial_vis):
         partido = entrada.get("partido",  "Partido desconocido")
         fecha   = entrada.get("fecha_hora", "—")
-        mercado = entrada.get("mercado") or "—"
+        # "mercado" guardado es la clave canónica (compatibilidad con el JSON ya
+        # persistido) — em.titulo_mercado() la traduce SOLO para mostrarla.
+        mercado_raw = entrada.get("mercado") or ""
+        mercado     = em.titulo_mercado(mercado_raw) if mercado_raw else "—"
         edge    = float(entrada.get("edge", 0.0))
         puntos  = entrada.get("puntos",  0)
         verdict = entrada.get("veredicto", "NO APOSTAR")
@@ -347,7 +354,7 @@ def mostrar() -> None:
                 f'</div>'
                 f'<div class="hc-badges">'
                 f'<span class="hc-badge" style="color:{_PURP};border-color:#a78bfa44;background:#a78bfa11;">{mercado}</span>'
-                f'<span class="hc-badge" style="color:{edge_col};border-color:{edge_col}44;background:{edge_col}11;">Edge {sign_e}{edge}%</span>'
+                f'<span class="hc-badge" style="color:{edge_col};border-color:{edge_col}44;background:{edge_col}11;">{em.EDGE_LABEL.capitalize()} {sign_e}{edge}%</span>'
                 f'<span class="hc-badge" style="color:var(--texto-apagado);border-color:var(--borde);background:var(--bg-elemento);">{puntos}/5 pts</span>'
                 f'<span class="hc-badge" style="color:{col_v};border-color:{col_vb};background:{col_v}11;'
                 f'font-size:11px;font-weight:700;">{verdict}</span>'

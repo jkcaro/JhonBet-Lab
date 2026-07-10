@@ -11,6 +11,8 @@ import anthropic
 from dotenv import load_dotenv
 from scipy.stats import poisson as poisson_dist
 
+from modules import etiquetas_mercado as em
+
 load_dotenv()
 
 os.makedirs(Path(__file__).parent.parent / "data", exist_ok=True)
@@ -755,18 +757,25 @@ Estas alertas deben reflejarse explícitamente en tu respuesta:
 
 
 def analizar_con_claude(datos_partido: dict, mercado: str) -> str:
-    """Envía datos del partido a Claude con instrucciones adaptadas al mercado."""
+    """
+    Envía datos del partido a Claude con instrucciones adaptadas al mercado.
+    "mercado" sigue siendo la clave canónica (MERCADOS_CLAUDE) para el lookup
+    en _INSTRUCCIONES_MERCADO y para el campo persistido — mercado_visible
+    solo sustituye el texto libre del prompt (nomenclatura Codere), nunca las
+    claves internas.
+    """
     client = anthropic.Anthropic(api_key=API_KEY)
 
     _fallback           = next(iter(_INSTRUCCIONES_MERCADO.values()))
     instrucciones       = _INSTRUCCIONES_MERCADO.get(mercado, _fallback)
     contexto_y_alertas  = _construir_contexto_dinamico(datos_partido)
+    mercado_visible     = em.titulo_mercado(mercado)
 
     prompt = f"""Eres un analista especialista en apuestas deportivas, experto en los mercados
 "Ambos Marcan" y "Resultado 1ª Parte". Tu análisis es cuantitativo, riguroso y siempre
 basado en los datos proporcionados.
 
-Mercado a analizar: **{mercado}**
+Mercado a analizar: **{mercado_visible}**
 
 {instrucciones}
 {contexto_y_alertas}
@@ -782,13 +791,13 @@ REGLAS OBLIGATORIAS — esto es dinero real, sé estricto:
 Estructura tu respuesta EXACTAMENTE en estos 4 puntos, y SIEMPRE termina con el
 bloque de veredicto final (sin ningún texto después de él):
 1. Valoración del partido — xG de cada equipo, favorito, forma reciente si disponible
-2. Análisis "{mercado}" — cálculo paso a paso de probabilidades, edge y cuotas reales
+2. Análisis "{mercado_visible}" — cálculo paso a paso de probabilidades, edge y cuotas reales
 3. Recomendación — "APOSTAR: [opción] @ [cuota]" O "No apostar — [motivo concreto]"
 4. Confianza: Alto / Medio / Bajo — con justificación en una línea
 
 Después del punto 4, añade EXACTAMENTE este bloque (sustituye los valores entre []):
 === VEREDICTO FINAL ===
-MERCADO: {mercado}
+MERCADO: {mercado_visible}
 SELECCIÓN: [resultado único recomendado, o "Ninguno"]
 CUOTA: [X.XX, o "—" si no apuestas]
 EDGE: [X.X%, o "—" si no apuestas]
@@ -1005,7 +1014,7 @@ def _calcular_puntuacion(texto_claude: str, datos: dict) -> dict:
         decision = "amarillo"
         if cond_edge_ruido:
             fuente_txt = "xG manual" if cond_xg_manual else "xG estimado"
-            motivo_cordura = f"Edge inusualmente alto (+{edge:.1f}%) con {fuente_txt} — probable ruido"
+            motivo_cordura = f"{em.EDGE_LABEL.capitalize()} inusualmente alta (+{edge:.1f}%) con {fuente_txt} — probable ruido"
         else:
             motivo_cordura = "Señal contra el resultado más probable del modelo"
 
@@ -1248,7 +1257,7 @@ def _banner_decision(texto_claude: str, datos: dict,
             f'<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'
             f'<span style="color:#16a34a;font-size:17px;font-weight:800;">{etiqueta}</span>'
             f'<span style="color:var(--texto);font-size:12px;">'
-            f'Edge: <b style="color:#16a34a;">+{edge:.1f}%</b>'
+            f'{em.EDGE_LABEL.capitalize()}: <b style="color:#16a34a;">+{edge:.1f}%</b>'
             f'&nbsp;·&nbsp;Puntos: <b style="color:#16a34a;">{puntos}/4</b>'
             f'&nbsp;·&nbsp;Confianza: <b>{confianza}</b>'
             f'{stake_txt}</span></div>'
@@ -1267,7 +1276,7 @@ def _banner_decision(texto_claude: str, datos: dict,
             f'<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'
             f'<span style="color:#b8780f;font-size:17px;font-weight:800;">🟡 PRECAUCIÓN</span>'
             f'<span style="color:var(--texto);font-size:12px;">'
-            f'Edge: <b style="color:#b8780f;">+{edge:.1f}%</b>'
+            f'{em.EDGE_LABEL.capitalize()}: <b style="color:#b8780f;">+{edge:.1f}%</b>'
             f'&nbsp;·&nbsp;Puntos: <b style="color:#b8780f;">{puntos}/4</b>'
             f'&nbsp;·&nbsp;Confianza: <b>{confianza}</b>'
             f'{stake_txt}</span></div>'
@@ -1278,9 +1287,9 @@ def _banner_decision(texto_claude: str, datos: dict,
     razones: list[str] = []
     if not puntuacion["cond_edge_base"]:
         if puntuacion.get("sin_cuota"):
-            razones.append("faltan cuotas para calcular edge")
+            razones.append(f"faltan cuotas para calcular {em.EDGE_LABEL}")
         else:
-            razones.append(f"edge {edge:.1f}% &lt; 6%")
+            razones.append(f"{em.EDGE_LABEL} {edge:.1f}% &lt; 6%")
     elif puntos <= 2:
         razones.append(f"puntuación {puntos}/4 insuficiente")
     if confianza == "Bajo":
@@ -1529,10 +1538,15 @@ def mostrar():
     # ══════════════════════════════════════════════════════════════════════════
     # CONTROLES — selector de mercado, partido activo, formulario de análisis
     # ══════════════════════════════════════════════════════════════════════════
+    # format_func solo cambia el texto mostrado en el desplegable (nomenclatura
+    # Codere) — el valor devuelto/guardado en session_state["claude_mercado"]
+    # sigue siendo la clave canónica exacta de MERCADOS_CLAUDE, así que no
+    # afecta ningún lookup, comparación ni lo que se persiste en el historial.
     mercado = st.selectbox(
         "Tipo de mercado:",
         MERCADOS_CLAUDE,
         key="claude_mercado",
+        format_func=em.titulo_mercado,
         on_change=_limpiar_analisis,
     )
 
@@ -1609,7 +1623,7 @@ def mostrar():
                  use_container_width=True, disabled=not _forma_completa):
         _analisis_ok = False
         _status = st.empty()
-        with st.spinner(f"Analizando «{mercado}»…"):
+        with st.spinner(f"Analizando «{em.titulo_mercado(mercado)}»…"):
             try:
                 datos["forma_reciente_local"]      = forma_local.strip()
                 datos["forma_reciente_visitante"]  = forma_visit.strip()
@@ -1673,7 +1687,7 @@ def mostrar():
     st.markdown(
         f'<div style="font-size:10px;color:{paleta["texto"]};font-weight:800;'
         f'letter-spacing:2px;text-transform:uppercase;margin:14px 0 8px;">'
-        f'◈ {mercado_activo}</div>',
+        f'◈ {em.titulo_mercado(mercado_activo)}</div>',
         unsafe_allow_html=True,
     )
 
@@ -1687,7 +1701,7 @@ def mostrar():
             unsafe_allow_html=True,
         )
     with col_g1:
-        st.plotly_chart(gauge_donut_gris(max(0.0, edge_der), "Edge %", paleta["dorado"]),
+        st.plotly_chart(gauge_donut_gris(max(0.0, edge_der), f"{em.EDGE_LABEL.capitalize()} %", paleta["dorado"]),
                         use_container_width=True, config=_CONFIG, key="fila1_gauge_edge")
     with col_g2:
         st.plotly_chart(gauge_donut_gris(confianza_pct, "Confianza %", paleta["petroleo"]),

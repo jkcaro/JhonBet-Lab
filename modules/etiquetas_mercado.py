@@ -18,17 +18,21 @@ outcome_ou), nunca escribiendo el texto visible a mano.
 
 # ── Títulos de mercado: clave canónica interna (sin cambios) → texto visible ──
 TITULOS_MERCADO: dict[str, str] = {
-    "1X2":                    "¿Quién gana el partido?",
-    "Victoria 1X2":           "¿Quién gana el partido?",
-    "Ambos Marcan":           "Marcan Ambos Equipos",
-    "Over/Under 1.5":         "Más/Menos Total Goles (línea 1.5)",
-    "Over/Under 2.5":         "Más/Menos Total Goles (línea 2.5)",
-    "1X2 HT":                 "1ª Parte — ¿Quién gana la primera parte?",
-    "Resultado 1T":           "1ª Parte — ¿Quién gana la primera parte?",
-    "Resultado al descanso":  "1ª Parte — ¿Quién gana la primera parte?",
-    "O/U 0.5 HT":             "1ª Parte — Más/Menos Total Goles (línea 0.5)",
-    "O/U 1.5 HT":             "1ª Parte — Más/Menos Total Goles (línea 1.5)",
-    "Primer en marcar":       "1ª Parte — Primer Equipo en Marcar",
+    "1X2":                          "¿Quién gana el partido?",
+    "Victoria 1X2":                 "¿Quién gana el partido?",
+    "Ambos Marcan":                 "Marcan Ambos Equipos",
+    "Ambos Marcan — Sí (BTTS Sí)":  "Marcan Ambos Equipos — Sí",
+    "Ambos Marcan — No (BTTS No)":  "Marcan Ambos Equipos — No",
+    "Over/Under 1.5":               "Más/Menos Total Goles (línea 1.5)",
+    "Over/Under 2.5":               "Más/Menos Total Goles (línea 2.5)",
+    "Más de 1.5 Goles":             "Más de 1.5 — Total Goles",
+    "Menos 1.5 Goles":              "Menos de 1.5 — Total Goles",
+    "1X2 HT":                       "1ª Parte — ¿Quién gana la primera parte?",
+    "Resultado 1T":                 "1ª Parte — ¿Quién gana la primera parte?",
+    "Resultado al descanso":        "1ª Parte — ¿Quién gana la primera parte?",
+    "O/U 0.5 HT":                   "1ª Parte — Más/Menos Total Goles (línea 0.5)",
+    "O/U 1.5 HT":                   "1ª Parte — Más/Menos Total Goles (línea 1.5)",
+    "Primer en marcar":             "1ª Parte — Primer Equipo en Marcar",
 }
 
 # ── Outcomes de mercados 1X2 (partido completo y HT) ───────────────────────────
