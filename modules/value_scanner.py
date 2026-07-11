@@ -1,19 +1,8 @@
 """Módulo: Escáner de valor — detecta apuestas con edge ≥ 6% usando el modelo Poisson."""
 
-import re
 import requests
 import streamlit as st
 from scipy.stats import poisson
-
-# ── Filtro de equipos filiales (mismo patrón que claude_analysis.py) ──────────
-_RE_FILIAL = re.compile(
-    r'(\b(b|ii|iii|iv|filial|reservas?|reserves?|sub[\s-]?\d{2}|u\d{2})\b'
-    r'|[\s(]b\)?$)',
-    re.IGNORECASE,
-)
-
-def _es_filial(nombre: str) -> bool:
-    return bool(_RE_FILIAL.search(nombre))
 
 # Reutiliza constantes y lista de ligas de odds_api para mantenerse sincronizado
 from modules.odds_api import API_KEY, BASE_URL, LIGAS_BUSQUEDA as LIGAS_SCAN
@@ -178,8 +167,6 @@ def escanear_valor() -> list[dict]:
             for p in partidos:
                 local  = p["home_team"]
                 visita = p["away_team"]
-                if _es_filial(local) or _es_filial(visita):
-                    continue
 
                 nombre     = f"{local} vs {visita}"
                 bookmakers = p.get("bookmakers", [])
@@ -221,8 +208,6 @@ def escanear_valor() -> list[dict]:
             nombre = p["partido"]
             if nombre in partidos_con_cuotas:
                 continue   # ya fue escaneado con cuotas reales
-            if _es_filial(p["equipo_local"]) or _es_filial(p["equipo_visitante"]):
-                continue
 
             xg_l  = float(p.get("xg_local",     1.4))
             xg_v  = float(p.get("xg_visitante", 1.1))

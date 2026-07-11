@@ -174,18 +174,6 @@ def mostrar() -> None:
 
     partido = datos.get("partido", "")
 
-    filiales = _ca._detectar_filiales(partido)
-    if filiales:
-        for equipo in filiales:
-            st.markdown(
-                f'<div style="background:#1a0404;border:2px solid #ef5350;'
-                f'border-radius:8px;padding:10px 16px;margin:4px 0;'
-                f'font-size:13px;font-weight:700;color:#ef5350;">'
-                f'⛔ Equipo filial — análisis bloqueado: <b>{equipo}</b></div>',
-                unsafe_allow_html=True,
-            )
-        return
-
     # ── Banner: partido activo ───────────────────────────────────────────────
     # El fondo se mantiene en petróleo oscuro literal (rol de "barra de
     # cabecera oscura", no de acento de marca) — en Codere "petroleo" es

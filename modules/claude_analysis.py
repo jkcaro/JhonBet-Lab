@@ -57,8 +57,7 @@ PASO 4 — Contexto de forma reciente:
 
 NEVER recomiendes más de un resultado.
 NEVER recomienda si el edge máximo de los 3 resultados < 6%.
-NEVER recomienda si confianza es Baja.
-NEVER recomienda para equipos filiales.""",
+NEVER recomienda si confianza es Baja.""",
 
     "Ambos Marcan — No (BTTS No)": """\
 Eres un especialista en el mercado "Ambos Marcan — No" (BTTS No).
@@ -88,8 +87,7 @@ PASO 4 — Recomendación:
 
 NEVER recomienda si xG_visitante ≥ 0.8.
 NEVER recomienda si edge < 6%.
-NEVER recomienda si confianza es Baja.
-NEVER recomienda para equipos filiales.""",
+NEVER recomienda si confianza es Baja.""",
 
     "Menos 1.5 Goles": """\
 Eres un especialista en el mercado "Menos 1.5 Goles" (Under 1.5).
@@ -122,8 +120,7 @@ PASO 5 — Contexto:
 
 NEVER recomienda si xG_total > 2.5.
 NEVER recomienda si edge < 6%.
-NEVER recomienda si confianza es Baja.
-NEVER recomienda para equipos filiales.""",
+NEVER recomienda si confianza es Baja.""",
 
     "Más de 1.5 Goles": """\
 Eres un especialista en el mercado "Más de 1.5 Goles" (Over 1.5).
@@ -156,8 +153,7 @@ PASO 5 — Contexto:
 
 NEVER recomienda si xG_total < 1.5.
 NEVER recomienda si edge < 6%.
-NEVER recomienda si confianza es Baja.
-NEVER recomienda para equipos filiales.""",
+NEVER recomienda si confianza es Baja.""",
 
     "Ambos Marcan — Sí (BTTS Sí)": """\
 Eres un especialista en el mercado "Ambos Marcan — Sí" (BTTS Sí).
@@ -187,8 +183,7 @@ PASO 4 — Recomendación:
 
 NEVER recomienda si algún xG individual < 1.0.
 NEVER recomienda si edge < 6%.
-NEVER recomienda si confianza es Baja.
-NEVER recomienda para equipos filiales.""",
+NEVER recomienda si confianza es Baja.""",
 }
 
 
@@ -286,46 +281,15 @@ def _enriquecer_con_cuotas(datos: dict) -> dict:
     return datos
 
 
-# ─── Detección de equipos filiales ───────────────────────────────────────────
-
-_SUFIJOS_FILIAL = re.compile(
-    r'(\b(b|ii|iii|iv|filial|reservas?|reserves?|sub[\s-]?\d{2}|u\d{2})\b'
-    r'|[\s(]b\)?$)',
-    re.IGNORECASE,
-)
-
-
-def _detectar_filiales(partido: str) -> list[str]:
-    """
-    Devuelve los nombres de equipo del partido que parecen filiales o reservas.
-    Detecta: "Real Madrid B", "Athletic II", "Atlético Reservas", "Sub-23", etc.
-    """
-    if " vs " not in partido:
-        return []
-    equipos = [p.strip() for p in partido.split(" vs ", 1)]
-    return [e for e in equipos if _SUFIJOS_FILIAL.search(e)]
-
-
 def _enriquecer_con_alertas(datos: dict) -> dict:
     """
     Añade al dict una lista de alertas para el analista sobre:
-    - Equipos filiales detectados
     - Fiabilidad limitada del xG estimado
     - Posible rotación de plantilla por tipo de competición
     """
     alertas: list[str] = []
 
-    # ① Equipos filiales
-    filiales = _detectar_filiales(datos.get("partido", ""))
-    if filiales:
-        datos["equipos_filiales"] = filiales
-        alertas.append(
-            f"FILIAL DETECTADA — {', '.join(filiales)}: este equipo es probablemente "
-            "un filial o reservas. Los xG estimados son poco fiables. "
-            "Reduce la confianza a Bajo y advierte al usuario explícitamente."
-        )
-
-    # ② Fiabilidad del xG
+    # ① Fiabilidad del xG
     if datos.get("probabilidades"):
         alertas.append(
             "XG ESTIMADO — Los valores de xG se derivan de cuotas de mercado, "
@@ -333,7 +297,7 @@ def _enriquecer_con_alertas(datos: dict) -> dict:
             "(estadisticas_forma), deben tener más peso que el modelo Poisson."
         )
 
-    # ③ Rotación de plantilla por competición
+    # ② Rotación de plantilla por competición
     liga = datos.get("liga", "").lower()
     palabras_rotacion = [
         "copa", "cup", "coupe", "pokal", "taça",
@@ -748,7 +712,6 @@ def _construir_contexto_dinamico(datos_partido: dict) -> str:
 {items}
 
 Estas alertas deben reflejarse explícitamente en tu respuesta:
-- Si hay filial detectado → escribe "⚠️ Equipo filial: la fiabilidad es baja" al inicio del punto 1.
 - Si el xG es estimado → menciona en el punto 2 que las probabilidades son orientativas.
 - Si hay riesgo de rotación → indícalo en el nivel de confianza del punto 4.
 """
@@ -781,7 +744,6 @@ Mercado a analizar: **{mercado_visible}**
 REGLAS OBLIGATORIAS — esto es dinero real, sé estricto:
 - Si el edge calculado es < 6%: la recomendación DEBE ser "No apostar".
 - Si la confianza es Baja: la recomendación DEBE ser "No apostar".
-- Si hay equipos filiales en los datos: la recomendación DEBE ser "No apostar".
 - Nunca inventes cuotas; usa solo las de "cuotas_reales" si están disponibles.
 - El stake máximo es el 2% del bankroll del usuario.
 - El bloque VEREDICTO FINAL es obligatorio y debe coincidir exactamente con la
@@ -1405,19 +1367,6 @@ def mostrar():
 
     with st.expander("⚽ Predicción de Goles", expanded=False):
         _mostrar_goles_panel()
-
-    filiales = _detectar_filiales(partido)
-    if filiales:
-        for equipo in filiales:
-            st.markdown(
-                f'<div class="alerta-peligro" style="font-size:13px;font-weight:700;">'
-                f'⛔ Equipo filial — análisis bloqueado: <b>{equipo}</b><br>'
-                f'<span style="font-weight:400;font-size:12px;">'
-                f'Los datos de xG no son fiables para equipos filiales/reservas. '
-                f'Selecciona un equipo del primer equipo para continuar.</span></div>',
-                unsafe_allow_html=True,
-            )
-        return
 
     saldo     = float(st.session_state.get("saldo", 200.0))
     stake_max = round(saldo * 0.02, 2)
