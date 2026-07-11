@@ -700,7 +700,6 @@ def mostrar() -> None:
     st.markdown(_CSS_VIVO, unsafe_allow_html=True)
 
     # ── Partido (editable) ────────────────────────────────────────────────────
-    liga    = st.session_state.get("liga_activa", "")
     partido = st.text_input(
         "Partido",
         value=st.session_state.get("partido_activo", ""),

@@ -77,7 +77,6 @@ def _barra_prediccion(etiqueta: str, porcentaje: float, color: str) -> str:
 def mostrar():
     """Renderiza el módulo completo del Modelo Predictivo."""
     df_partidos  = cargar_partidos()
-    liga_activa  = st.session_state.get("liga_activa", "La Liga")
     partido_activo = st.session_state.get("partido_activo", "Real Madrid vs Barcelona")
 
     filtro = df_partidos["partido"] == partido_activo

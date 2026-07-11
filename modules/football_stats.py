@@ -94,7 +94,6 @@ def _resumen_forma(resultados: list, condicion: list) -> dict:
             return "Sin datos"
         return f"{lst.count('G')}V {lst.count('E')}E {lst.count('P')}D de {len(lst)}"
 
-    n = len(resultados) or 1
     return {
         "forma":                 " - ".join(resultados) if resultados else "Sin datos",
         "victorias":             resultados.count("G"),
@@ -157,9 +156,7 @@ def _sofa_calcular_forma(eventos: list[dict], nombre: str) -> dict:
 
     for e in eventos:
         home = e.get("homeTeam", {})
-        away = e.get("awayTeam", {})
         h_name = home.get("name", "") or home.get("shortName", "")
-        a_name = away.get("name", "") or away.get("shortName", "")
 
         h_goles = int((e.get("homeScore") or {}).get("current", 0) or 0)
         a_goles = int((e.get("awayScore") or {}).get("current", 0) or 0)
@@ -272,7 +269,6 @@ def _free_calcular_forma(partidos: list[dict], nombre: str) -> dict:
 
     for p in partidos:
         home_raw = p.get("homeTeam") or p.get("home_team") or p.get("home") or {}
-        away_raw = p.get("awayTeam") or p.get("away_team") or p.get("away") or {}
 
         def _nom(obj):
             if isinstance(obj, str): return obj
@@ -281,7 +277,6 @@ def _free_calcular_forma(partidos: list[dict], nombre: str) -> dict:
             return ""
 
         h_name = _nom(home_raw)
-        a_name = _nom(away_raw)
 
         score = p.get("score") or p.get("result") or p.get("goals") or p.get("fullTime") or {}
         if isinstance(score, str):
@@ -779,7 +774,6 @@ def _espn_sd_calcular_forma(eventos: list[dict], nombre: str) -> dict:
             visita = next(c for c in competidores if c["homeAway"] == "away")
 
             nombre_local  = local["team"]["displayName"]
-            nombre_visita = visita["team"]["displayName"]
 
             goles_l = int(local.get("score",  "0") or 0)
             goles_v = int(visita.get("score", "0") or 0)

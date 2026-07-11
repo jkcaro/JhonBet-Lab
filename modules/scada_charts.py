@@ -273,11 +273,11 @@ def panel_sistema_puntos(puntuacion: dict,
 
     # Colores según decisión
     if estado == "APOSTAR":
-        col_estado = GREEN;  col_gauge = GREEN;  col_bg = "#021209"
+        col_estado = GREEN;  col_gauge = GREEN
     elif estado == "PRECAUCIÓN":
-        col_estado = YELLOW; col_gauge = YELLOW; col_bg = "#141200"
+        col_estado = YELLOW; col_gauge = YELLOW
     else:
-        col_estado = RED;    col_gauge = RED;    col_bg = "#150404"
+        col_estado = RED;    col_gauge = RED
 
     pct = int((puntos / 4) * 100)   # 0-100 para la barra CSS
 
@@ -337,7 +337,6 @@ def panel_sistema_puntos(puntuacion: dict,
     conds_html = ""
     for label, ok, tipo in condiciones:
         icono  = "✅" if ok else "❌"
-        color  = GREEN if ok else (RED if tipo == "base" and not ok else GRAY)
         conds_html += (
             f'<div style="display:flex;align-items:center;gap:5px;margin:2px 0;">'
             f'<span style="font-size:10px;">{icono}</span>'

@@ -1530,5 +1530,9 @@ def mostrar():
         _panel_apuestas_virtuales()
 
     # ── Informe completo — texto íntegro de Claude, oculto por defecto ─────────
+    # Sin unsafe_allow_html (mismo criterio que first_half_analysis.py): el texto
+    # es contenido generado por el LLM y puede reflejar entrada del usuario (p.ej.
+    # nombres de equipo) — el renderer de markdown de Streamlit ya interpreta
+    # **negrita**/listas y sanea cualquier HTML/script embebido sin ejecutarlo.
     with st.expander("📋 Informe completo", expanded=False):
-        st.markdown(_normalizar_formato(resultado), unsafe_allow_html=True)
+        st.markdown(_normalizar_formato(resultado))
