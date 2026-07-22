@@ -1981,6 +1981,28 @@ _HERO_IMAGENES = [
     Path(__file__).parent / "assets" / "copa.png",
     Path(__file__).parent / "assets" / "estadioMundial.png",
 ]
+# background-position por imagen — auditado con Chromium real (ver skill):
+# "center" plano corta el motivo principal en 3 de las 4 (copa.png solo
+# mostraba el vástago, sin la copa; campeones/estadioMundial solo mostraban
+# el fondo del estadio, sin el trofeo). Nota: copa.png y estadioMundial.png
+# tienen una marca "AI-Generated" en la esquina superior — ninguna posición
+# de abajo la muestra, pero si se cambian estas imágenes revisar de nuevo.
+_HERO_POSICIONES = {
+    "estadio-jugadores.png": "center",       # ya es ancha (1977x795), centrada muestra el balón bien
+    "campeones.png":         "center 65%",   # el trofeo está en la mitad inferior de la foto vertical
+    "copa.png":               "center 20%",  # el globo de la copa está en el tercio superior
+    "estadioMundial.png":    "center 65%",   # el monumento/trofeo está en la mitad inferior
+}
+# Override SOLO para móvil (recorte mucho más alto/angosto que desktop —
+# el mismo % vertical muestra otra franja de la foto). Auditado en 390px:
+# "campeones" a 65% solapaba el texto "CAMPEONES DEL MUNDO" de la propia
+# imagen con nuestro subtítulo; "estadioMundial" a 65% quedaba sobre una
+# zona muy clara del techo del estadio, algo menos legible. Las otras 2
+# imágenes (estadio-jugadores, copa) ya se ven bien igual en ambos formatos.
+_HERO_POSICIONES_MOVIL = {
+    "campeones.png":      "center 80%",
+    "estadioMundial.png": "center 75%",
+}
 _HERO_SEG_S = 6    # segundos que cada imagen queda visible (incl. fundidos)
 _HERO_FADE_S = 1   # duración del fundido entre imágenes
 
@@ -2047,15 +2069,25 @@ if _hero_rutas:
 """
     for _i, _ruta in enumerate(_orden_hero):
         _b64 = _leer_imagen_b64(str(_ruta))
+        _posicion = _HERO_POSICIONES.get(_ruta.name, "center")
+        # Clase estable por IMAGEN (no por índice de mezcla, que cambia cada
+        # carga) — permite un override de background-position solo-móvil
+        # aunque el orden del carrusel sea aleatorio.
+        _clase_img = f"jbl-hero-img-{_ruta.stem}"
         # delay negativo = arranca ya "adelantada" esos segundos — la 1ª
         # capa nace a mitad de su tramo de visibilidad (sin flash en negro
         # al cargar) y las demás quedan escalonadas cada _HERO_SEG_S.
         _delay = -(_HERO_FADE_S + _HERO_SEG_S * _i)
         _capas_css += (
             f'.jbl-hero-capa-{_i} {{ background-image:url("data:image/jpeg;base64,{_b64}"); '
-            f'animation-delay:{_delay}s; }}\n'
+            f'background-position:{_posicion}; animation-delay:{_delay}s; }}\n'
         )
-        _capas_html += f'<div class="jbl-hero-capa jbl-hero-capa-{_i}"></div>'
+        _pos_movil = _HERO_POSICIONES_MOVIL.get(_ruta.name)
+        if _pos_movil:
+            _capas_css += (
+                f'@media (max-width: 864px) {{ .{_clase_img} {{ background-position:{_pos_movil} !important; }} }}\n'
+            )
+        _capas_html += f'<div class="jbl-hero-capa jbl-hero-capa-{_i} {_clase_img}"></div>'
 
     st.markdown(f"<style>{_capas_css}</style>", unsafe_allow_html=True)
 else:
@@ -2066,9 +2098,12 @@ st.markdown(
     f'position:relative;overflow:hidden;background-color:#0F172A;">'
     # capas del carrusel (detrás del degradado y del contenido)
     f'{_capas_html}'
-    # gradient overlay
+    # gradient overlay — fuerte solo donde vive el texto (izquierda), zona
+    # media/derecha más transparente para que las 4 imágenes del carrusel
+    # luzcan (antes 45%/0.68 apagaba de más a campeones/copa, que son más
+    # claras y coloridas que el estadio nocturno original)
     f'<div style="position:absolute;inset:0;'
-    f'background:linear-gradient(90deg,rgba(8,12,25,0.93) 0%,rgba(8,12,25,0.68) 45%,rgba(8,12,25,0.12) 100%);"></div>'
+    f'background:linear-gradient(90deg,rgba(8,12,25,0.90) 0%,rgba(8,12,25,0.55) 35%,rgba(8,12,25,0.05) 75%);"></div>'
     # content
     f'<div style="position:relative;z-index:2;padding:56px 52px 52px;max-width:600px;">'
     # BETVISION AI title
