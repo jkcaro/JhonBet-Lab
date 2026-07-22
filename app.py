@@ -1963,8 +1963,18 @@ with st.sidebar:
 # en atributos style inline pero los permite dentro de bloques <style>)
 import base64 as _b64mod
 _estadio_path = Path(__file__).parent / "assets" / "estadio-jugadores.png"
+
+
+@st.cache_data
+def _leer_imagen_b64(ruta: str) -> str:
+    """Lee y codifica en base64 una imagen — se ejecuta en TODAS las páginas
+    (el hero banner está antes del enrutamiento), cachear evita releer el
+    archivo y recodificarlo en cada rerun."""
+    return _b64mod.b64encode(Path(ruta).read_bytes()).decode()
+
+
 if _estadio_path.exists():
-    _estadio_b64 = _b64mod.b64encode(_estadio_path.read_bytes()).decode()
+    _estadio_b64 = _leer_imagen_b64(str(_estadio_path))
     st.markdown(
         f'<style>.jbl-hero{{background-image:url("data:image/png;base64,{_estadio_b64}");'
         f'background-size:cover;background-position:center;}}</style>',
