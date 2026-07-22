@@ -1,7 +1,6 @@
 """Módulo: Visualizaciones estilo SCADA industrial para análisis de apuestas."""
 
 import math
-import re
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -47,26 +46,6 @@ div[data-testid="column"] { gap: 4px !important; }
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _max_edge(datos: dict) -> float:
-    """Mayor edge positivo (%) en edge_por_outcome."""
-    mejor = -99.0
-    for v in datos.get("edge_por_outcome", {}).values():
-        try:
-            n = float(str(v).replace("+", "").replace("%", ""))
-            if n > mejor:
-                mejor = n
-        except ValueError:
-            pass
-    return mejor if mejor > -99.0 else 0.0
-
-
-def _extraer_confianza_num(texto: str) -> tuple[str, float]:
-    """Devuelve (nivel_str, valor_numérico) para el gauge."""
-    m = re.search(r'confianza[:\s*_]+\**(alto|medio|bajo)\**', texto, re.IGNORECASE)
-    nivel = m.group(1).capitalize() if m else "Bajo"
-    return nivel, {"Alto": 85.0, "Medio": 50.0, "Bajo": 18.0}[nivel]
-
-
 def _xg_de_datos(datos: dict) -> tuple[float, float]:
     probs = datos.get("probabilidades", {})
     return float(probs.get("xg_local", 1.5) or 1.5), float(probs.get("xg_visitante", 1.2) or 1.2)
@@ -91,277 +70,6 @@ def _prob1x2(datos: dict) -> tuple[float, float, float, str, str, str]:
         elif k.startswith("victoria_"):
             p_v, label_v = val, k[9:]
     return p_l, p_e, p_v, label_l or "Local", "Empate", label_v or "Visitante"
-
-
-# ── Gauge de Edge % ───────────────────────────────────────────────────────────
-
-@st.cache_data
-def gauge_edge(edge: float) -> go.Figure:
-    color = GREEN if edge >= 6 else (YELLOW if edge >= 0 else RED)
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=round(edge, 1),
-        number={"suffix": "%", "font": {"size": 22, "color": color, "family": "Courier New, monospace"},
-                "valueformat": "+.1f"},
-        title={"text": "EDGE  %", "font": {"size": 10, "color": TEXT, "family": "Courier New, monospace"}},
-        gauge={
-            "axis": {"range": [-20, 20], "dtick": 5,
-                     "tickfont": {"size": 8, "color": TEXT, "family": "Courier New"},
-                     "tickcolor": BORDER, "tickwidth": 1},
-            "bar": {"color": color, "thickness": 0.22},
-            "bgcolor": PANEL,
-            "borderwidth": 1, "bordercolor": BORDER,
-            "steps": [
-                {"range": [-20, 0], "color": "#150404"},
-                {"range": [0,   6], "color": "#141200"},
-                {"range": [6,  20], "color": "#021209"},
-            ],
-            "threshold": {"line": {"color": GREEN, "width": 2},
-                          "thickness": 0.8, "value": 6},
-        },
-    ))
-    fig.update_layout(**_LAYOUT, height=190,
-                      title=dict(text="◈ INDICADOR EDGE  (umbral 6%)", font=dict(size=9, color=TEXT, family="Courier New"), x=0.02))
-    return fig
-
-
-# ── Gauge de Confianza ────────────────────────────────────────────────────────
-
-@st.cache_data
-def gauge_confianza(texto_claude: str) -> go.Figure:
-    nivel, valor = _extraer_confianza_num(texto_claude)
-    color = GREEN if nivel == "Alto" else (YELLOW if nivel == "Medio" else RED)
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=valor,
-        number={"suffix": "%", "font": {"size": 22, "color": color, "family": "Courier New, monospace"}},
-        title={"text": f"CONFIANZA: {nivel.upper()}",
-               "font": {"size": 10, "color": TEXT, "family": "Courier New, monospace"}},
-        gauge={
-            "axis": {"range": [0, 100], "dtick": 20,
-                     "tickfont": {"size": 8, "color": TEXT, "family": "Courier New"},
-                     "tickcolor": BORDER, "tickwidth": 1},
-            "bar": {"color": color, "thickness": 0.22},
-            "bgcolor": PANEL,
-            "borderwidth": 1, "bordercolor": BORDER,
-            "steps": [
-                {"range": [0,  33],  "color": "#150404"},
-                {"range": [33, 66],  "color": "#141200"},
-                {"range": [66, 100], "color": "#021209"},
-            ],
-        },
-    ))
-    fig.update_layout(**_LAYOUT, height=190,
-                      title=dict(text="◈ CONFIANZA MODELO", font=dict(size=9, color=TEXT, family="Courier New"), x=0.02))
-    return fig
-
-
-ORANGE = "#ff8c00"   # naranja para VALOR BAJO
-
-
-# ── Panel Discrepancia BeSoccer vs Codere ─────────────────────────────────────
-
-def panel_discrepancia(datos: dict) -> str:
-    """
-    Panel SCADA de discrepancia entre el modelo Poisson (BeSoccer/xG) y la cuota Codere.
-
-    Para cada outcome en edge_por_outcome muestra:
-      - Probabilidad del modelo  = (1 + edge/100) × prob_impl
-      - Probabilidad implícita   = 1 / cuota_codere  (en %)
-      - Edge                     = (cuota × P_modelo − 1) × 100
-      - Clasificación visual:
-          🟢 APUESTA CON VALOR  edge ≥ 6%
-          🔴 SIN VALOR          edge < 6%
-    """
-    edge_dict   = datos.get("edge_por_outcome", {})
-    cuotas_dict = datos.get("cuotas_reales", {})
-
-    if not edge_dict:
-        return ""
-
-    def _clasif(e: float) -> tuple[str, str, str]:
-        if e >= 6: return "🟢", "APUESTA CON VALOR", GREEN
-        return          "🔴", "SIN VALOR",          RED
-
-    def _codere_cuota(key: str) -> float:
-        entry = cuotas_dict.get(key, {})
-        for campo in ("codere", "mejor_cuota"):
-            try:
-                v = float(str(entry.get(campo, "0")).replace("N/D", "0"))
-                if v > 1.0:
-                    return v
-            except (ValueError, TypeError):
-                pass
-        return 0.0
-
-    filas = ""
-    for outcome, edge_str in edge_dict.items():
-        try:
-            edge_val = float(str(edge_str).replace("+", "").replace("%", ""))
-        except ValueError:
-            continue
-
-        codere     = _codere_cuota(outcome)
-        prob_impl  = (1.0 / codere * 100.0) if codere > 1.0 else 0.0
-        prob_model = prob_impl * (1 + edge_val / 100)
-
-        emoji, label, col_clasif = _clasif(edge_val)
-        col_edge = GREEN if edge_val >= 6 else RED
-        etiqueta = outcome.split("—")[-1].strip() if "—" in outcome else outcome
-
-        cuota_txt = f"{codere:.2f}" if codere > 1.0 else "—"
-        prob_model_txt = "—" if prob_model <= 0 else f"{prob_model:.1f}%"
-        prob_impl_txt  = "—" if prob_impl  <= 0 else f"{prob_impl:.1f}%"
-        span_cuota     = "" if codere <= 1.0 else f' <span style="opacity:.6">@{cuota_txt}</span>'
-
-        filas += (
-            f'<tr>'
-            f'<td style="color:{LIGHT};font-size:10px;padding:3px 8px;">{etiqueta}</td>'
-            f'<td style="color:{GREEN};font-size:10px;font-family:Courier New,monospace;'
-            f'padding:3px 8px;text-align:right;">'
-            f'{prob_model_txt}</td>'
-            f'<td style="color:{TEXT};font-size:10px;font-family:Courier New,monospace;'
-            f'padding:3px 8px;text-align:right;">'
-            f'{prob_impl_txt}{span_cuota}'
-            f'</td>'
-            f'<td style="font-size:10px;font-family:Courier New,monospace;'
-            f'padding:3px 8px;text-align:right;font-weight:700;color:{col_edge};">'
-            f'{edge_val:+.1f}%</td>'
-            f'<td style="font-size:10px;padding:3px 8px;white-space:nowrap;color:{col_clasif};">'
-            f'{emoji} {label}</td>'
-            f'</tr>'
-        )
-
-    if not filas:
-        return ""
-
-    return (
-        f'<div style="background:{PANEL};border:1px solid {BORDER};border-radius:6px;'
-        f'padding:10px 14px;margin-bottom:6px;">'
-        f'<div style="font-size:9px;color:{TEXT};letter-spacing:2px;'
-        f'font-family:Courier New,monospace;margin-bottom:8px;padding-bottom:5px;'
-        f'border-bottom:1px solid {BORDER};">◈ DISCREPANCIA BESOCCER vs CODERE</div>'
-        f'<table style="width:100%;border-collapse:collapse;">'
-        f'<thead><tr>'
-        f'<th style="font-size:8px;color:{TEXT};font-family:Courier New;'
-        f'padding:2px 8px;text-align:left;">OUTCOME</th>'
-        f'<th style="font-size:8px;color:{TEXT};font-family:Courier New;'
-        f'padding:2px 8px;text-align:right;">MODELO</th>'
-        f'<th style="font-size:8px;color:{TEXT};font-family:Courier New;'
-        f'padding:2px 8px;text-align:right;">CODERE</th>'
-        f'<th style="font-size:8px;color:{TEXT};font-family:Courier New;'
-        f'padding:2px 8px;text-align:right;">EDGE</th>'
-        f'<th style="font-size:8px;color:{TEXT};font-family:Courier New;'
-        f'padding:2px 8px;">CLASIFICACIÓN</th>'
-        f'</tr></thead>'
-        f'<tbody>{filas}</tbody>'
-        f'</table>'
-        f'</div>'
-    )
-
-
-# ── Panel Sistema de Puntos ───────────────────────────────────────────────────
-
-def panel_sistema_puntos(puntuacion: dict,
-                         condiciones_custom: list | None = None) -> str:
-    """
-    Panel SCADA del sistema de puntos (0-5).
-    condiciones_custom: lista opcional de (label, ok, tipo) para sobreescribir
-    las condiciones por defecto (permite reutilizar desde otros módulos).
-    """
-    puntos    = puntuacion.get("puntos", 0)
-    edge      = puntuacion.get("edge", 0.0)
-    estado    = puntuacion.get("estado", "NO APOSTAR")
-
-    # Colores según decisión
-    if estado == "APOSTAR":
-        col_estado = GREEN;  col_gauge = GREEN
-    elif estado == "PRECAUCIÓN":
-        col_estado = YELLOW; col_gauge = YELLOW
-    else:
-        col_estado = RED;    col_gauge = RED
-
-    pct = int((puntos / 4) * 100)   # 0-100 para la barra CSS
-
-    # ── Gauge vertical ───────────────────────────────────────────────
-    gauge = (
-        f'<div style="display:flex;flex-direction:column;align-items:center;'
-        f'gap:3px;min-width:32px;">'
-        f'<div style="font-size:8px;color:{TEXT};font-family:Courier New,monospace;">4</div>'
-        f'<div style="width:14px;height:90px;background:{PANEL};border:1px solid {BORDER};'
-        f'border-radius:3px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;">'
-        # zona verde (pts 4 = 100%)
-        f'<div style="position:absolute;"></div>'
-        f'<div style="width:100%;height:{pct}%;background:{col_gauge};'
-        f'box-shadow:0 0 6px {col_gauge}66;border-radius:2px 2px 0 0;"></div>'
-        f'</div>'
-        # marcas de zona
-        f'<div style="font-size:8px;color:{TEXT};font-family:Courier New,monospace;">0</div>'
-        f'</div>'
-        # leyenda de zonas (a la derecha del gauge)
-        f'<div style="display:flex;flex-direction:column;justify-content:space-between;'
-        f'height:90px;padding:2px 0;margin-left:4px;">'
-        f'<div style="font-size:7px;color:{GREEN};font-family:Courier New,monospace;">4 ✅</div>'
-        f'<div style="font-size:7px;color:{YELLOW};font-family:Courier New,monospace;">3 🟡</div>'
-        f'<div style="font-size:7px;color:{RED};font-family:Courier New,monospace;">0-2 🔴</div>'
-        f'</div>'
-    )
-
-    # ── Puntuación central ───────────────────────────────────────────
-    score = (
-        f'<div style="display:flex;flex-direction:column;align-items:center;gap:2px;'
-        f'padding:0 12px;">'
-        f'<div style="font-size:38px;font-weight:900;color:{col_gauge};'
-        f'font-family:Courier New,monospace;line-height:1;'
-        f'text-shadow:0 0 14px {col_gauge}55;">{puntos}</div>'
-        f'<div style="font-size:9px;color:{TEXT};font-family:Courier New,monospace;'
-        f'letter-spacing:1px;">/ 4 PTS</div>'
-        f'<div style="font-size:10px;font-weight:700;color:{col_estado};'
-        f'font-family:Courier New,monospace;letter-spacing:1px;margin-top:4px;">'
-        f'{estado}</div>'
-        f'<div style="font-size:8px;color:{TEXT};margin-top:2px;">'
-        f'Edge {edge:+.1f}%</div>'
-        f'</div>'
-    )
-
-    # ── Condiciones individuales ─────────────────────────────────────
-    if condiciones_custom is not None:
-        condiciones = condiciones_custom
-    else:
-        condiciones = [
-            (f"Edge ≥ 6% ({edge:+.1f}%)",        puntuacion.get("cond_edge_base",  False), "base"),
-            ("xG Manual BeSoccer  +2 pts",        puntuacion.get("cond_xg_manual",  False), "pts"),
-            (f"BTTS Local ≥ 3/5   +1 pt",         puntuacion.get("cond_btts_local", False), "pts"),
-            (f"BTTS Visit. ≥ 3/5  +1 pt",         puntuacion.get("cond_btts_visit", False), "pts"),
-            ("Confianza Medio/Alto (informativo)", puntuacion.get("cond_confianza",  False), "info"),
-        ]
-
-    conds_html = ""
-    for label, ok, tipo in condiciones:
-        icono  = "✅" if ok else "❌"
-        conds_html += (
-            f'<div style="display:flex;align-items:center;gap:5px;margin:2px 0;">'
-            f'<span style="font-size:10px;">{icono}</span>'
-            f'<span style="font-size:9px;color:{LIGHT};font-family:Courier New,monospace;">'
-            f'{label}</span>'
-            f'</div>'
-        )
-
-    return (
-        f'<div class="jbl-fade-in" style="background:{PANEL};border:1px solid {BORDER};border-radius:6px;'
-        f'padding:10px 14px;margin-bottom:6px;">'
-        f'<div style="font-size:9px;color:{TEXT};letter-spacing:2px;'
-        f'font-family:Courier New,monospace;margin-bottom:8px;padding-bottom:5px;'
-        f'border-bottom:1px solid {BORDER};">◈ SISTEMA DE PUNTOS</div>'
-        f'<div style="display:flex;align-items:center;gap:4px;">'
-        f'{gauge}'
-        f'{score}'
-        f'<div style="flex:1;padding-left:6px;border-left:1px solid {BORDER};">'
-        f'{conds_html}'
-        f'</div>'
-        f'</div>'
-        f'</div>'
-    )
 
 
 # ── Semáforo industrial ───────────────────────────────────────────────────────
@@ -421,58 +129,6 @@ def semaforo_html(edge: float, puntuacion: dict | None = None) -> str:
     )
 
 
-# ── Barras SCADA de probabilidades ────────────────────────────────────────────
-
-@st.cache_data
-def barras_probabilidad(datos: dict) -> go.Figure:
-    p_l, p_e, p_v, lbl_l, lbl_e, lbl_v = _prob1x2(datos)
-    edges = datos.get("edge_por_outcome", {})
-
-    def _tiene_valor(label: str) -> bool:
-        for k, v in edges.items():
-            try:
-                if label.lower() in k.lower() and float(str(v).replace("+","").replace("%","")) >= 10:
-                    return True
-            except ValueError:
-                pass
-        return False
-
-    labels = [lbl_v[:14], lbl_e, lbl_l[:14]]
-    valores = [p_v, p_e, p_l]
-    colores = [GREEN if _tiene_valor(lb) else GRAY for lb in [lbl_v, lbl_e, lbl_l]]
-
-    fig = go.Figure()
-    for i, (lbl, val, col) in enumerate(zip(labels, valores, colores)):
-        fig.add_trace(go.Bar(
-            x=[val], y=[lbl], orientation="h",
-            marker=dict(color=col, line=dict(color=BORDER, width=1)),
-            text=f"{val:.1f}%", textposition="inside",
-            textfont=dict(family="Courier New", size=9, color=BG if col != GRAY else LIGHT),
-            showlegend=False, name=lbl,
-        ))
-        # Fondo vacío (segmentos a 100%)
-        fig.add_trace(go.Bar(
-            x=[100 - val], y=[lbl], orientation="h",
-            marker=dict(color=GRID, line=dict(color=BORDER, width=1)),
-            showlegend=False, name="", hoverinfo="skip",
-        ))
-
-    # Líneas de cuadrícula cada 10%
-    for tick in range(0, 101, 10):
-        fig.add_vline(x=tick, line=dict(color=BORDER, width=1, dash="dot"))
-
-    fig.update_layout(
-        **_LAYOUT, height=120, barmode="stack",
-        title=dict(text="◈ PROBABILIDADES 1X2  (verde = valor detectado)",
-                   font=dict(size=9, color=TEXT, family="Courier New"), x=0.01),
-        xaxis=dict(range=[0, 100], tickfont=dict(size=8, color=TEXT, family="Courier New"),
-                   showgrid=False, showline=True, linecolor=BORDER, ticksuffix="%", dtick=20),
-        yaxis=dict(tickfont=dict(size=9, color=LIGHT, family="Courier New"), showgrid=False),
-        bargap=0.35,
-    )
-    return fig
-
-
 # ── Donut Ambos Marcan ────────────────────────────────────────────────────────
 
 @st.cache_data
@@ -505,158 +161,6 @@ def donut_ambos_marcan(datos: dict) -> go.Figure:
                    font=dict(size=9, color=TEXT, family="Courier New"), x=0.01),
     )
     return fig
-
-
-# ── Gauge P(0-0) para mercados Sin Goles ─────────────────────────────────────
-
-def gauge_p00(datos: dict) -> go.Figure:
-    """
-    Velocímetro SCADA que muestra P(0-0) calculada con Poisson.
-    Escala 0-50%: rojo (0-15% → muy improbable), amarillo (15-30%), verde (30%+).
-    """
-    sg = datos.get("sin_goles_calculado", {})
-    try:
-        pct = float(str(sg.get("probabilidad_00", "0")).replace("%", ""))
-    except ValueError:
-        pct = 0.0
-
-    xg_l = sg.get("xg_local", "?")
-    xg_v = sg.get("xg_visitante", "?")
-    formula = f"e^(-{xg_l}) × e^(-{xg_v})"
-
-    color = GREEN if pct >= 30 else (YELLOW if pct >= 15 else RED)
-
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=round(pct, 1),
-        number={"suffix": "%", "font": {"size": 22, "color": color, "family": "Courier New, monospace"}},
-        title={"text": f"P(0-0)<br><span style='font-size:9px'>{formula}</span>",
-               "font": {"size": 10, "color": TEXT, "family": "Courier New, monospace"}},
-        gauge={
-            "axis": {"range": [0, 50], "dtick": 10,
-                     "tickfont": {"size": 8, "color": TEXT, "family": "Courier New"},
-                     "tickcolor": BORDER, "tickwidth": 1, "ticksuffix": "%"},
-            "bar": {"color": color, "thickness": 0.22},
-            "bgcolor": PANEL,
-            "borderwidth": 1, "bordercolor": BORDER,
-            "steps": [
-                {"range": [0,  15], "color": "#150404"},   # rojo: muy improbable
-                {"range": [15, 30], "color": "#141200"},   # amarillo: posible
-                {"range": [30, 50], "color": "#021209"},   # verde: valor posible
-            ],
-            "threshold": {"line": {"color": YELLOW, "width": 2},
-                          "thickness": 0.8, "value": 15},  # línea umbral 15%
-        },
-    ))
-    fig.update_layout(**_LAYOUT, height=190,
-                      title=dict(text="◈ P(0-0)  POISSON",
-                                 font=dict(size=9, color=TEXT, family="Courier New"), x=0.02))
-    return fig
-
-
-# ── Dashboard principal ───────────────────────────────────────────────────────
-
-def mostrar_dashboard(texto_claude: str, datos: dict, mercado: str,
-                      puntuacion: dict | None = None) -> None:
-    """Renderiza el dashboard SCADA completo para el análisis actual."""
-
-    st.markdown(_CSS_COMPACTO, unsafe_allow_html=True)
-
-    edge = _max_edge(datos)
-
-    # ── Gauge Edge ──
-    st.plotly_chart(gauge_edge(edge), use_container_width=True, config=_CONFIG)
-    # ── Gauge Confianza ──
-    st.plotly_chart(gauge_confianza(texto_claude), use_container_width=True, config=_CONFIG)
-    # ── Semáforo ──
-    st.markdown(semaforo_html(edge, puntuacion), unsafe_allow_html=True)
-
-    # ── Panel discrepancia BeSoccer vs Codere ──
-    html_discrepancia = panel_discrepancia(datos)
-    if html_discrepancia:
-        st.markdown(html_discrepancia, unsafe_allow_html=True)
-
-    # ── Panel sistema de puntos ──
-    if puntuacion:
-        st.markdown(panel_sistema_puntos(puntuacion), unsafe_allow_html=True)
-
-    # ── Fila 2: Barras de probabilidad ──
-    if datos.get("probabilidades"):
-        st.plotly_chart(barras_probabilidad(datos), use_container_width=True, config=_CONFIG)
-
-    # ── Gauge P(0-0) para mercados Sin Goles ──
-    es_sin_goles = "Sin Goles" in mercado or "0-0" in mercado or "Sin Goleador" in mercado
-    if es_sin_goles and datos.get("sin_goles_calculado"):
-        sg = datos["sin_goles_calculado"]
-        st.plotly_chart(gauge_p00(datos), use_container_width=True, config=_CONFIG)
-        advertencia = sg.get("advertencia")
-        if advertencia:
-            st.markdown(
-                f'<div class="alerta-peligro" style="font-size:12px;">{advertencia}</div>',
-                unsafe_allow_html=True,
-            )
-        st.markdown(
-            f'<div style="font-family:Courier New,monospace;font-size:12px;'
-            f'background:{PANEL};border:1px solid {BORDER};border-radius:6px;'
-            f'padding:10px 14px;margin-top:6px;">'
-            f'<div style="color:{TEXT};font-size:9px;letter-spacing:1px;'
-            f'margin-bottom:6px;">FÓRMULA POISSON</div>'
-            f'<div style="color:{GREEN};font-size:13px;font-weight:700;">'
-            f'{sg.get("formula", "—")}</div>'
-            f'<div style="margin-top:8px;font-size:10px;color:{LIGHT};">'
-            f'Cuota justa: <b style="color:{YELLOW};">{sg.get("cuota_justa_modelo","—")}</b>'
-            f'&nbsp;&nbsp;|&nbsp;&nbsp;'
-            f'Local 1º: <b>{sg.get("p_local_marca_1ro","—")}</b>'
-            f'&nbsp;&nbsp;|&nbsp;&nbsp;'
-            f'Visitante 1º: <b>{sg.get("p_visitante_marca_1ro","—")}</b>'
-            f'&nbsp;&nbsp;|&nbsp;&nbsp;'
-            f'Nadie marca: <b style="color:{GREEN};">{sg.get("p_nadie_marca","—")}</b>'
-            f'</div></div>',
-            unsafe_allow_html=True,
-        )
-
-    # ── Donut solo para Ambos Marcan ──
-    if "Ambos Marcan" in mercado:
-        xg_l, xg_v = _xg_de_datos(datos)
-        if xg_l > 0 and xg_v > 0:
-            st.plotly_chart(donut_ambos_marcan(datos), use_container_width=True, config=_CONFIG)
-            cuotas    = datos.get("cuotas_reales", {})
-            edge_dict = datos.get("edge_por_outcome", {})
-
-            def _color_edge(key: str) -> str:
-                try:
-                    raw = str(edge_dict.get(key, "0")).replace("+", "").replace("%", "")
-                    return GREEN if float(raw or 0) >= 10 else RED
-                except (ValueError, TypeError):
-                    return GRAY
-
-            if cuotas:
-                filas_html = ""
-                for k, v in cuotas.items():
-                    cuota_val = v.get("mejor_cuota", "—")
-                    edge_val  = edge_dict.get(k, "—")
-                    col_edge  = _color_edge(k)
-                    filas_html += (
-                        f"<tr>"
-                        f"<td style='color:{LIGHT};font-size:10px;padding:3px 8px;'>{k}</td>"
-                        f"<td style='color:{GREEN};font-size:10px;font-family:Courier New;"
-                        f"padding:3px 8px;'>{cuota_val}</td>"
-                        f"<td style='font-size:10px;font-family:Courier New;"
-                        f"padding:3px 8px;color:{col_edge};'>{edge_val}</td>"
-                        f"</tr>"
-                    )
-                st.markdown(
-                    f'<table style="width:100%;border-collapse:collapse;background:{PANEL};">'
-                    f'<thead><tr>'
-                    f'<th style="font-size:9px;color:{TEXT};font-family:Courier New;'
-                    f'padding:3px 8px;text-align:left;">OUTCOME</th>'
-                    f'<th style="font-size:9px;color:{TEXT};font-family:Courier New;'
-                    f'padding:3px 8px;">CUOTA</th>'
-                    f'<th style="font-size:9px;color:{TEXT};font-family:Courier New;'
-                    f'padding:3px 8px;">EDGE</th>'
-                    f'</tr></thead><tbody>{filas_html}</tbody></table>',
-                    unsafe_allow_html=True,
-                )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1022,9 +526,8 @@ def tabla_ultimos_analisis_html(registros: list, limite: int = 8) -> str:
 def panel_sistema_puntos_deop(puntuacion: dict,
                               condiciones_custom: list | None = None) -> str:
     """
-    Versión DeOP Connect (card blanca, borde petróleo izquierdo) de
-    panel_sistema_puntos(). Misma lógica/datos de entrada — solo cambia la
-    presentación visual (colores claros en vez de panel oscuro SCADA).
+    Panel de sistema de puntos estilo DeOP Connect (card blanca, borde
+    petróleo izquierdo): gauge vertical + condiciones con ✅/❌.
     """
     paleta = _paleta_activa()
     puntos = puntuacion.get("puntos", 0)
@@ -1110,10 +613,7 @@ def panel_sistema_puntos_deop(puntuacion: dict,
 
 
 def barras_probabilidad_deop(datos: dict) -> go.Figure:
-    """
-    Versión DeOP Connect (colores claros) de barras_probabilidad(). Misma
-    lógica de extracción de probabilidades/edge — solo cambia la paleta.
-    """
+    """Barras horizontales 1X2 (colores claros) — extrae probabilidades/edge vía _prob1x2()."""
     paleta = _paleta_activa()
     p_l, p_e, p_v, lbl_l, lbl_e, lbl_v = _prob1x2(datos)
     edges = datos.get("edge_por_outcome", {})
@@ -1167,9 +667,8 @@ def barras_probabilidad_deop(datos: dict) -> go.Figure:
 
 def panel_discrepancia_deop(datos: dict) -> str:
     """
-    Versión DeOP Connect (tabla clara, misma clase .tabla-cuotas del resto
-    de la app) de panel_discrepancia(). Misma lógica de edge/cuotas — solo
-    cambia la presentación visual.
+    Tabla de discrepancia BeSoccer vs Codere estilo DeOP Connect (misma
+    clase .tabla-cuotas del resto de la app).
     """
     paleta      = _paleta_activa()
     edge_dict   = datos.get("edge_por_outcome", {})
