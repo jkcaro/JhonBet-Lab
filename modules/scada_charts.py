@@ -95,6 +95,7 @@ def _prob1x2(datos: dict) -> tuple[float, float, float, str, str, str]:
 
 # ── Gauge de Edge % ───────────────────────────────────────────────────────────
 
+@st.cache_data
 def gauge_edge(edge: float) -> go.Figure:
     color = GREEN if edge >= 6 else (YELLOW if edge >= 0 else RED)
     fig = go.Figure(go.Indicator(
@@ -126,6 +127,7 @@ def gauge_edge(edge: float) -> go.Figure:
 
 # ── Gauge de Confianza ────────────────────────────────────────────────────────
 
+@st.cache_data
 def gauge_confianza(texto_claude: str) -> go.Figure:
     nivel, valor = _extraer_confianza_num(texto_claude)
     color = GREEN if nivel == "Alto" else (YELLOW if nivel == "Medio" else RED)
@@ -416,6 +418,7 @@ def semaforo_html(edge: float, puntuacion: dict | None = None) -> str:
 
 # ── Barras SCADA de probabilidades ────────────────────────────────────────────
 
+@st.cache_data
 def barras_probabilidad(datos: dict) -> go.Figure:
     p_l, p_e, p_v, lbl_l, lbl_e, lbl_v = _prob1x2(datos)
     edges = datos.get("edge_por_outcome", {})
@@ -467,6 +470,7 @@ def barras_probabilidad(datos: dict) -> go.Figure:
 
 # ── Donut Ambos Marcan ────────────────────────────────────────────────────────
 
+@st.cache_data
 def donut_ambos_marcan(datos: dict) -> go.Figure:
     xg_l, xg_v = _xg_de_datos(datos)
     p_si = (1 - math.exp(-xg_l)) * (1 - math.exp(-xg_v))
