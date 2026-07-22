@@ -1211,6 +1211,17 @@ section[data-testid="stMain"] {
     margin-top: 0 !important;
     overflow-x: hidden !important;
 }
+/* ── Hueco superior real: NO es el padding-top de block-container (ya en 0
+   arriba) — son ~6 elementos "invisibles" antes del hero (inyecciones de
+   <style>, iframes ocultos de componentes JS/CookieManager) que igual
+   consumen el gap de 16px entre elementos del vertical block, acumulando
+   ~120px. display:contents los saca del cálculo de gap sin tocar su
+   contenido (el <style> sigue funcionando, el iframe sigue vivo) — y NO
+   afecta elementos con contenido real (páginas sin hero no se ven tocadas
+   por esta regla, solo los contenedores 100% vacíos). ── */
+[data-testid="stElementContainer"]:has([data-testid="stMarkdownContainer"] > style:only-child) {
+    display: contents !important;
+}
 </style>
 """
 
@@ -2024,6 +2035,15 @@ if _hero_rutas:
     opacity:0; pointer-events:none;
     animation:jbl-hero-fade {_ciclo_s}s ease-in-out infinite;
 }}
+/* ── Sangrado completo responsivo — el padding lateral real de
+   .block-container NO es fijo: medido con Chromium real, es 16px (1rem)
+   por debajo de ~865px de viewport y 80px (5rem) por encima. Un solo
+   valor de margen negativo solo funciona en un extremo (probado: -5rem
+   fijo cortaba el texto del hero en móvil). ── */
+.jbl-hero {{ margin:-7.6rem -1rem 20px -1rem; width:calc(100% + 2rem); }}
+@media (min-width: 865px) {{
+    .jbl-hero {{ margin:-7.6rem -5rem 20px -5rem; width:calc(100% + 10rem); }}
+}}
 """
     for _i, _ruta in enumerate(_orden_hero):
         _b64 = _leer_imagen_b64(str(_ruta))
@@ -2042,7 +2062,7 @@ else:
     _capas_html = ""
 
 st.markdown(
-    f'<div class="jbl-hero" style="margin:0 -3rem 20px;width:calc(100% + 6rem);min-height:320px;'
+    f'<div class="jbl-hero" style="min-height:320px;'
     f'position:relative;overflow:hidden;background-color:#0F172A;">'
     # capas del carrusel (detrás del degradado y del contenido)
     f'{_capas_html}'
