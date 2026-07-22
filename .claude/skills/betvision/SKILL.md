@@ -3,7 +3,7 @@
 ## Entorno
 - Proyecto en WSL: /home/jhoncaro/proyectos/JhonBet-Lab — trabajar SIEMPRE desde WSL, nunca PowerShell
 - venv en ./venv — activar antes de python/streamlit
-- NO intentar screenshots con Playwright: la verificación visual la hace el usuario
+- Screenshots con Playwright SÍ son viables sin sudo: chrome-headless-shell falla por libs faltantes (libnspr4, libnss3, libnssutil3, libasound.so.2 — confirmar con `ldd` sobre el binario en ~/.cache/ms-playwright/). Se resuelve con `apt-get download <paquete>` (no requiere root) + `dpkg-deb -x <deb> <dir>` + lanzar Chromium con `LD_LIBRARY_PATH=<dir>/usr/lib/x86_64-linux-gnu` apuntando ahí. Útil para medir alineación/bounding boxes real (Playwright `.bounding_box()`), no solo mirar la captura. Esto NO reemplaza la verificación final del usuario — es evidencia previa, no el visto bueno.
 - Matar streamlits propios al terminar (pkill -f streamlit)
 
 ## Arquitectura
