@@ -154,7 +154,7 @@ def _reconstruir_datos(entrada: dict) -> dict:
 
 
 def _reconstruir_puntuacion(entrada: dict) -> dict:
-    """Reconstruye el dict 'puntuacion' para panel_sistema_puntos y semáforo."""
+    """Reconstruye el dict 'puntuacion' para semáforo, gauges y tarjeta de veredicto."""
     base = dict(entrada.get("puntuacion_scada", {}))
     # Garantizar campos mínimos
     base.setdefault("puntos",          entrada.get("puntos", 0))
@@ -174,48 +174,92 @@ def _reconstruir_puntuacion(entrada: dict) -> dict:
     return base
 
 
+_CONF_NUM = {"Alto": 85.0, "Medio": 50.0, "Bajo": 18.0}
+
+
 def _mostrar_scada(entrada: dict, idx: int = 0) -> None:
-    """Renderiza los gráficos SCADA en dos columnas para un análisis guardado."""
+    """
+    Renderiza el análisis guardado con los MISMOS componentes que la vista
+    en vivo de "Analizar con IA" (modules/claude_analysis.py, fila1/2/3) —
+    mismos datos del JSON, solo cambia el render (gauges de aguja/panel
+    terminal viejos -> donuts/tarjetas DeOP). Todos los paneles nuevos ya
+    degradan solos a "—"/"sin datos" cuando falta un campo (verificado:
+    victoria1x2_modelo, elo_local/visit y forma_reciente_* nunca se
+    guardaron en el historial, ni en registros viejos ni nuevos — no es
+    incompatibilidad de época, es una limitación estructural del guardado
+    ya cubierta por el propio diseño de esos paneles).
+    """
     from modules.scada_charts import (
-        gauge_edge, gauge_confianza, semaforo_html,
-        panel_sistema_puntos, barras_probabilidad, donut_ambos_marcan,
-        _CSS_COMPACTO,
+        semaforo_html, gauge_donut_gris, gauge_puntos_deop,
+        tarjeta_veredicto_html, tabla_edges, barras_probabilidad_deop,
+        donut_ambos_marcan, panel_xg_comparativo, panel_forma_reciente,
+        panel_balanza_elo, _CSS_COMPACTO, _paleta_activa,
     )
 
-    st.markdown(_CSS_COMPACTO, unsafe_allow_html=True)
-
-    edge       = float(entrada.get("edge", 0.0))
-    confianza  = entrada.get("confianza", "Bajo")
-    texto_conf = f"Confianza: {confianza}"
+    paleta     = _paleta_activa()
     puntuacion = _reconstruir_puntuacion(entrada)
     datos      = _reconstruir_datos(entrada)
 
-    col_izq, col_der = st.columns(2, gap="medium")
+    edge      = float(puntuacion.get("edge", 0.0))
+    puntos    = puntuacion.get("puntos", 0)
+    confianza = puntuacion.get("confianza", "Bajo")
+    confianza_pct = _CONF_NUM.get(confianza, 18.0)
+    mercado   = entrada.get("mercado", "")
+    sign      = "+" if edge >= 0 else ""
 
-    # ── Columna izquierda: indicadores de señal ──────────────────────
-    with col_izq:
-        st.plotly_chart(gauge_edge(edge),
-                        use_container_width=True, config=_CONFIG_PLOTLY,
-                        key=f"hist_edge_{idx}")
-        st.plotly_chart(gauge_confianza(texto_conf),
-                        use_container_width=True, config=_CONFIG_PLOTLY,
-                        key=f"hist_conf_{idx}")
+    st.markdown(_CSS_COMPACTO, unsafe_allow_html=True)
+
+    # ── Fila 1 — semáforo + tarjeta de veredicto + gauges edge/confianza/puntos ──
+    col_luz, col_ver, col_g1, col_g2, col_g3 = st.columns([0.8, 1.6, 1, 1, 1])
+    with col_luz:
         st.markdown(semaforo_html(edge, puntuacion), unsafe_allow_html=True)
+    with col_ver:
+        st.markdown(
+            tarjeta_veredicto_html(
+                em.titulo_mercado(mercado) if mercado else "Análisis guardado",
+                f"{em.EDGE_LABEL.capitalize()}: {sign}{edge:.1f}%  ·  "
+                f"Puntos: {puntos}/4  ·  Confianza: {confianza}",
+                puntuacion.get("estado", "NO APOSTAR"),
+            ),
+            unsafe_allow_html=True,
+        )
+    with col_g1:
+        st.plotly_chart(gauge_donut_gris(max(0.0, edge), f"{em.EDGE_LABEL.capitalize()} %", paleta["dorado"]),
+                        use_container_width=True, config=_CONFIG_PLOTLY, key=f"hist_gauge_edge_{idx}")
+    with col_g2:
+        st.plotly_chart(gauge_donut_gris(confianza_pct, "Confianza %", paleta["petroleo"]),
+                        use_container_width=True, config=_CONFIG_PLOTLY, key=f"hist_gauge_conf_{idx}")
+    with col_g3:
+        st.plotly_chart(gauge_puntos_deop(puntos, color=paleta["dorado"]),
+                        use_container_width=True, config=_CONFIG_PLOTLY, key=f"hist_gauge_pts_{idx}")
 
-    # ── Columna derecha: puntuación + probabilidades ──────────────────
-    with col_der:
-        st.markdown(panel_sistema_puntos(puntuacion), unsafe_allow_html=True)
-
+    # ── Fila 2 — tabla de edges + barras 1X2 + donut BTTS ──────────────────────
+    col_tabla, col_barras, col_donut = st.columns(3)
+    with col_tabla:
+        html_tabla = tabla_edges(datos)
+        if html_tabla:
+            st.markdown(html_tabla, unsafe_allow_html=True)
+        else:
+            st.caption("Tabla de edges no disponible para este análisis.")
+    with col_barras:
         if datos.get("probabilidades"):
-            st.plotly_chart(barras_probabilidad(datos),
-                            use_container_width=True, config=_CONFIG_PLOTLY,
-                            key=f"hist_barras_{idx}")
-            xg_l = float(datos["probabilidades"].get("xg_local",     0) or 0)
-            xg_v = float(datos["probabilidades"].get("xg_visitante", 0) or 0)
-            if xg_l > 0 and xg_v > 0:
-                st.plotly_chart(donut_ambos_marcan(datos),
-                                use_container_width=True, config=_CONFIG_PLOTLY,
-                                key=f"hist_donut_{idx}")
+            st.plotly_chart(barras_probabilidad_deop(datos),
+                            use_container_width=True, config=_CONFIG_PLOTLY, key=f"hist_barras_{idx}")
+    with col_donut:
+        xg_l = float(datos["probabilidades"].get("xg_local",     0) or 0)
+        xg_v = float(datos["probabilidades"].get("xg_visitante", 0) or 0)
+        if xg_l > 0 and xg_v > 0:
+            st.plotly_chart(donut_ambos_marcan(datos),
+                            use_container_width=True, config=_CONFIG_PLOTLY, key=f"hist_donut_{idx}")
+
+    # ── Fila 3 — xG comparativo + forma reciente + balanza ELO ────────────────
+    col_xg, col_forma, col_elo = st.columns(3)
+    with col_xg:
+        st.markdown(panel_xg_comparativo(datos), unsafe_allow_html=True)
+    with col_forma:
+        st.markdown(panel_forma_reciente(datos), unsafe_allow_html=True)
+    with col_elo:
+        st.markdown(panel_balanza_elo(datos), unsafe_allow_html=True)
 
 
 def mostrar() -> None:
