@@ -1222,6 +1222,83 @@ section[data-testid="stMain"] {
 [data-testid="stElementContainer"]:has([data-testid="stMarkdownContainer"] > style:only-child) {
     display: contents !important;
 }
+
+/* ── Microinteracciones — animar con propósito, nunca por decorar ──
+   0.15-0.3s, nada que parpadee, cero JavaScript. prefers-reduced-motion
+   al final desactiva todo para quien lo tenga configurado. ── */
+
+/* 1) Tarjetas de historial y KPI — hover = "esto es interactivo" */
+.dh-card, .hc-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.dh-card:hover, .hc-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+}
+/* La tarjeta KPI y su sparkline son 2 elementos Streamlit separados que
+   juntos forman una sola tarjeta visual (ver CSS de _kpi_cards_virtual) —
+   el hover se aplica a la columna que los envuelve a ambos, para que
+   suban juntos y no se separen. */
+[data-testid="stColumn"]:has(.kpi-vb-card) {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+[data-testid="stColumn"]:has(.kpi-vb-card):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+}
+
+/* 2) Botones — sensación de clic físico. !important: los estilos de tema
+   (.stButton > button con background/color) se re-inyectan en cada rerun
+   y pueden quedar después de este bloque en la cascada. */
+.stButton > button, [data-testid^="stBaseButton-"] {
+    transition: transform 0.15s ease !important;
+}
+.stButton > button:active, [data-testid^="stBaseButton-"]:active {
+    transform: scale(0.98) !important;
+}
+
+/* 3) Resultados de análisis (veredicto + paneles SCADA) — fade-in en vez
+   de aparecer de golpe. jbl-fade-in se agrega a mano en las tarjetas de
+   veredicto/puntos/semáforo; stPlotlyChart cubre los gauges/barras/donut
+   sin tener que tocar cada llamada a st.plotly_chart. */
+@keyframes jbl-fade-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.jbl-fade-in, [data-testid="stPlotlyChart"] {
+    animation: jbl-fade-in 0.3s ease-out;
+}
+
+/* 4) Semáforo en APOSTAR — único elemento "vivo" permanente (es LA señal).
+   El color viene por variable CSS (--jbl-glow) puesta inline junto al LED
+   verde activo, no hardcodeado aquí, para no acoplar este bloque a un
+   color de tema concreto. */
+@keyframes jbl-led-pulse {
+    0%, 100% { box-shadow: 0 0 10px var(--jbl-glow), 0 0 20px var(--jbl-glow); }
+    50%      { box-shadow: 0 0 16px var(--jbl-glow), 0 0 32px var(--jbl-glow); }
+}
+.jbl-led-pulse {
+    animation: jbl-led-pulse 2s ease-in-out infinite;
+}
+
+/* 5) Accesibilidad — desactiva TODO lo anterior si el usuario prefiere menos movimiento */
+@media (prefers-reduced-motion: reduce) {
+    .dh-card, .hc-card,
+    [data-testid="stColumn"]:has(.kpi-vb-card),
+    .stButton > button, [data-testid^="stBaseButton-"] {
+        transition: none !important;
+    }
+    .dh-card:hover, .hc-card:hover, [data-testid="stColumn"]:has(.kpi-vb-card):hover {
+        transform: none !important;
+        box-shadow: none !important;
+    }
+    .stButton > button:active, [data-testid^="stBaseButton-"]:active {
+        transform: none !important;
+    }
+    .jbl-fade-in, [data-testid="stPlotlyChart"], .jbl-led-pulse {
+        animation: none !important;
+    }
+}
 </style>
 """
 

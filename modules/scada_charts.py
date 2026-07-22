@@ -348,7 +348,7 @@ def panel_sistema_puntos(puntuacion: dict,
         )
 
     return (
-        f'<div style="background:{PANEL};border:1px solid {BORDER};border-radius:6px;'
+        f'<div class="jbl-fade-in" style="background:{PANEL};border:1px solid {BORDER};border-radius:6px;'
         f'padding:10px 14px;margin-bottom:6px;">'
         f'<div style="font-size:9px;color:{TEXT};letter-spacing:2px;'
         f'font-family:Courier New,monospace;margin-bottom:8px;padding-bottom:5px;'
@@ -379,11 +379,16 @@ def semaforo_html(edge: float, puntuacion: dict | None = None) -> str:
         estado_raw = "APOSTAR" if edge >= 6 else "NO APOSTAR"
         subtitulo  = f"EDGE {edge:+.1f}%"
 
+    # Clase/variable del pulso — SOLO el LED verde activo (APOSTAR) queda
+    # "vivo" permanentemente; es la única señal que lo amerita. Los otros
+    # 2 estados usan el glow estático de siempre, sin animación.
+    clase_g, var_g = "", ""
     if estado_raw == "APOSTAR":
         estado, col_txt = "APOSTAR", GREEN
         r, a, g = "#150404", "#141200", GREEN
         glow_r = glow_a = "none"
         glow_g = f"0 0 10px {GREEN}, 0 0 20px {GREEN}44"
+        clase_g, var_g = "jbl-led-pulse", f"--jbl-glow:{GREEN};"
     elif estado_raw == "PRECAUCIÓN":
         estado, col_txt = "PRECAUCIÓN", YELLOW
         r, a, g = "#150404", YELLOW, "#021209"
@@ -397,7 +402,7 @@ def semaforo_html(edge: float, puntuacion: dict | None = None) -> str:
         glow_a = glow_g = "none"
 
     return (
-        f'<div style="background:{PANEL};border:1px solid {BORDER};border-radius:6px;'
+        f'<div class="jbl-fade-in" style="background:{PANEL};border:1px solid {BORDER};border-radius:6px;'
         f'padding:12px 10px;display:flex;flex-direction:column;align-items:center;gap:4px;height:190px;'
         f'justify-content:center;font-family:Courier New,monospace;">'
         f'<div style="font-size:9px;color:{TEXT};letter-spacing:2px;margin-bottom:8px;">SEMÁFORO</div>'
@@ -407,8 +412,8 @@ def semaforo_html(edge: float, puntuacion: dict | None = None) -> str:
         f'<div style="width:22px;height:22px;border-radius:50%;background:{a};box-shadow:{glow_a};'
         f'border:1px solid {BORDER};"></div>'
         f'<div style="width:4px;height:8px;background:{BORDER};"></div>'
-        f'<div style="width:22px;height:22px;border-radius:50%;background:{g};box-shadow:{glow_g};'
-        f'border:1px solid {BORDER};"></div>'
+        f'<div class="{clase_g}" style="width:22px;height:22px;border-radius:50%;background:{g};'
+        f'box-shadow:{glow_g};border:1px solid {BORDER};{var_g}"></div>'
         f'<div style="font-size:9px;font-weight:700;color:{col_txt};margin-top:10px;letter-spacing:1px;">'
         f'{estado}</div>'
         f'<div style="font-size:8px;color:{TEXT};">{subtitulo}</div>'
@@ -926,7 +931,7 @@ def tarjeta_veredicto_html(titulo: str, valor_texto: str, estado: str) -> str:
     else:
         col, icono = DEOP_ROJO, "🔴"
     return (
-        f'<div style="background:{paleta["fondo"]};border:1px solid {DEOP_GRIS};border-left:5px solid {col};'
+        f'<div class="jbl-fade-in" style="background:{paleta["fondo"]};border:1px solid {DEOP_GRIS};border-left:5px solid {col};'
         f'border-radius:8px;padding:12px 14px;margin-bottom:8px;min-height:96px;">'
         f'<div style="font-size:11px;color:{DEOP_TEXTO};font-weight:700;text-transform:uppercase;'
         f'letter-spacing:.6px;margin-bottom:4px;">⚠️ {titulo}</div>'
