@@ -221,7 +221,7 @@ def _mostrar_scada(entrada: dict, idx: int = 0) -> None:
 def mostrar() -> None:
     """Renderiza la página de Historial de Análisis Claude."""
     st.markdown(_CSS, unsafe_allow_html=True)
-    st.markdown(historial_card_css("hc", "hc_lista"), unsafe_allow_html=True)
+    st.markdown(historial_card_css("hc", "hc_lista", incluye_expander=False), unsafe_allow_html=True)
 
     historial = _cargar()
 

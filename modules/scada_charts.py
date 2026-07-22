@@ -740,7 +740,7 @@ def semaforo_mini_html(estado: str) -> str:
     )
 
 
-def historial_card_css(prefix: str, key: str) -> str:
+def historial_card_css(prefix: str, key: str, incluye_expander: bool = True) -> str:
     """
     CSS compartido de las tarjetas de página de historial (Historial Dominada
     y Estadísticas / Historial Análisis Claude): tarjeta en 2 líneas —
@@ -751,7 +751,25 @@ def historial_card_css(prefix: str, key: str) -> str:
     su propia `key` de st.container() que envuelve el listado, así las
     clases no colisionan entre páginas, pero el CSS base es uno solo: la
     próxima mejora de este patrón se hace aquí una vez, no en cada módulo.
+
+    `incluye_expander=False` omite las reglas de `st.expander` — úsalo si
+    esa página reemplazó el expander nativo por otro patrón (p.ej. el
+    checkbox de lazy-render de Estadísticas), para no dejar CSS muerto.
     """
+    _css_expander = f"""
+/* ── Acordeón "Ver detalles" — pegado, mismo ancho, más bajo que la tarjeta ── */
+.st-key-{key} [data-testid="stExpander"] {{ margin:0 !important; max-width:900px; }}
+.st-key-{key} [data-testid="stExpander"] summary {{
+    min-height:0 !important; height:32px !important;
+    padding:0 12px !important; font-size:11px !important;
+}}
+.st-key-{key} [data-testid="stExpander"] summary svg {{ width:13px !important; height:13px !important; }}
+.st-key-{key} [data-testid="stExpanderDetails"] {{ padding:10px !important; }}
+@media (max-width: 767px) {{
+    .st-key-{key} [data-testid="stExpander"] {{ max-width:100%; }}
+}}
+""" if incluye_expander else ""
+
     return f"""
 <style>
 .{prefix}-card {{
@@ -781,20 +799,9 @@ def historial_card_css(prefix: str, key: str) -> str:
     .{prefix}-right  {{ width:100%; justify-content:space-between; }}
 }}
 
-/* ── Acordeón "Ver detalles" — pegado, mismo ancho, más bajo que la tarjeta ── */
 .st-key-{key} [data-testid="stVerticalBlock"] {{ gap:8px !important; }}
 .st-key-{key} [data-testid="stElementContainer"] {{ margin-bottom:0 !important; }}
-.st-key-{key} [data-testid="stExpander"] {{ margin:0 !important; max-width:900px; }}
-.st-key-{key} [data-testid="stExpander"] summary {{
-    min-height:0 !important; height:32px !important;
-    padding:0 12px !important; font-size:11px !important;
-}}
-.st-key-{key} [data-testid="stExpander"] summary svg {{ width:13px !important; height:13px !important; }}
-.st-key-{key} [data-testid="stExpanderDetails"] {{ padding:10px !important; }}
-@media (max-width: 767px) {{
-    .st-key-{key} [data-testid="stExpander"] {{ max-width:100%; }}
-}}
-</style>
+{_css_expander}</style>
 """
 
 
