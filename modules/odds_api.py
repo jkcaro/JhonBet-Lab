@@ -17,7 +17,6 @@ BASE_URL = "https://api.the-odds-api.com/v4"
 
 LIGAS = {
     "🏆 Champions League":  "soccer_uefa_champs_league",
-    "🌍 Mundial 2026":      "soccer_fifa_world_cup",
     "🌍 Amistosos Int.":    "soccer_international_friendlies",
     "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League":   "soccer_epl",
     "🇪🇸 La Liga":           "soccer_spain_la_liga",
@@ -249,7 +248,6 @@ def actualizar_datos() -> tuple[int, str, list[dict]]:
 
 LIGAS_BUSQUEDA = {
     "🏆 Champions League":  "soccer_uefa_champs_league",
-    "🌍 Mundial 2026":      "soccer_fifa_world_cup",
     "🌍 Amistosos Int.":    "soccer_international_friendlies",
     "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League":   "soccer_epl",
     "🇪🇸 La Liga":           "soccer_spain_la_liga",

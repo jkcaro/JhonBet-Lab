@@ -31,10 +31,29 @@ BASE_URL = "https://api.football-data.org/v4"
 TIMEOUT  = 10
 
 # Competiciones soportadas → código Football-Data.org.
-# Se empieza solo con el Mundial; añadir más entradas aquí cuando se necesiten
-# (p.ej. "🏆 Champions League": "CL", "🇪🇸 La Liga": "PD").
+# Verificado con llamada real: los 6 códigos responden (HTTP 200) en el plan
+# gratuito (10 llamadas/min). El Mundial 2026 ya terminó — no se ofrece aquí
+# como competición activa; el historial guardado de esa fase sigue intacto
+# en data/dominant_history.json y matches.csv, ajeno a este diccionario.
 COMPETICIONES: dict[str, str] = {
-    "🌍 Mundial 2026": "WC",
+    "🇪🇸 La Liga":          "PD",
+    "🏆 Champions League":  "CL",
+    "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League":   "PL",
+    "🇮🇹 Serie A":           "SA",
+    "🇩🇪 Bundesliga":        "BL1",
+    "🇫🇷 Ligue 1":           "FL1",
+}
+
+# Tipo de competición (LEAGUE = tiene clasificación; CUP = eliminatoria, sin
+# tabla única aplicable). Verificado con llamada real a /competitions/{codigo}.
+TIPO_COMPETICION: dict[str, str] = {
+    "PD":  "LEAGUE",
+    "PL":  "LEAGUE",
+    "SA":  "LEAGUE",
+    "BL1": "LEAGUE",
+    "FL1": "LEAGUE",
+    "CL":  "CUP",
+    "WC":  "CUP",
 }
 
 
@@ -156,3 +175,43 @@ def forma_reciente_equipo(team_id: int, n: int = 5) -> str:
         else:
             resultados.append("L")
     return ",".join(resultados)
+
+
+@st.cache_data(ttl=3600)
+def standings(codigo: str) -> list[dict] | None:
+    """
+    Clasificación actual de una competición de tipo LEAGUE.
+
+    Devuelve None sin llamar a la API si la competición es de tipo CUP
+    (eliminatoria) — no aplica tabla única, se omite con elegancia en vez
+    de lanzar un error. También devuelve None si la API no trae una tabla
+    "TOTAL" (p.ej. temporada aún sin arrancar en algún caso límite).
+
+    Cada entrada de la lista:
+      {posicion, equipo, equipo_id, jugados, puntos, dif_goles, forma}
+
+    Lanza FootballDataError si la llamada a la API falla (red, 403, 429...).
+    """
+    if TIPO_COMPETICION.get(codigo) == "CUP":
+        return None
+
+    data = _get(f"/competitions/{codigo}/standings")
+    tabla_total = next(
+        (t for t in data.get("standings", []) if t.get("type") == "TOTAL"), None
+    )
+    if not tabla_total:
+        return None
+
+    clasificacion = []
+    for fila in tabla_total.get("table", []):
+        equipo = fila.get("team") or {}
+        clasificacion.append({
+            "posicion":  fila.get("position"),
+            "equipo":    equipo.get("name"),
+            "equipo_id": equipo.get("id"),
+            "jugados":   fila.get("playedGames"),
+            "puntos":    fila.get("points"),
+            "dif_goles": fila.get("goalDifference"),
+            "forma":     fila.get("form") or "",
+        })
+    return clasificacion

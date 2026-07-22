@@ -18,7 +18,6 @@ RUTA_PARTIDOS = Path(__file__).parent.parent / "data" / "matches.csv"
 
 # Slugs de liga ESPN → nombre para mostrar en la app
 LIGAS_ESPN: dict[str, str] = {
-    "fifa.world":       "🌍 Mundial 2026",
     "uefa.champions":   "🏆 Champions League",
     "eng.1":            "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League",
     "esp.1":            "🇪🇸 La Liga",

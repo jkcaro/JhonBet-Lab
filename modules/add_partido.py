@@ -125,12 +125,31 @@ div[data-testid="stAppViewContainer"] .stSelectbox label {
                 except fd_api.FootballDataError as exc:
                     st.warning(f"⚠️ No se pudo calcular la forma reciente: {exc}")
 
+                # Clasificación — solo aplica a competiciones de tipo LEAGUE;
+                # para copas (CUP) standings() devuelve None y se omite sin aviso.
+                pos_local_fd = pos_visit_fd = None
+                try:
+                    tabla = fd_api.standings(codigo)
+                    if tabla:
+                        pos_local_fd = next(
+                            (f["posicion"] for f in tabla if f["equipo_id"] == partido_fd["local_id"]),
+                            None,
+                        )
+                        pos_visit_fd = next(
+                            (f["posicion"] for f in tabla if f["equipo_id"] == partido_fd["visitante_id"]),
+                            None,
+                        )
+                except fd_api.FootballDataError:
+                    pass  # sin clasificación disponible — no bloquea el flujo
+
                 st.session_state["pm_prefill"] = {
                     "equipo_local":     partido_fd["local"],
                     "equipo_visitante": partido_fd["visitante"],
                     "liga":             competicion_nombre,
                     "forma_local":      forma_local_fd,
                     "forma_visitante":  forma_visit_fd,
+                    "pos_local":        pos_local_fd,
+                    "pos_visitante":    pos_visit_fd,
                 }
                 for k in ("pm_local", "pm_visitante", "pm_liga",
                           "pm_forma_local", "pm_forma_visit"):
@@ -206,6 +225,12 @@ div[data-testid="stAppViewContainer"] .stSelectbox label {
 
     _nombre_l = equipo_local.strip() or "Local"
     _nombre_v = equipo_visitante.strip() or "Visitante"
+
+    # ── Clasificación — solo si se cargó desde Football-Data.org y aplica (LEAGUE) ──
+    _pos_l = prefill.get("pos_local")
+    _pos_v = prefill.get("pos_visitante")
+    if _pos_l and _pos_v:
+        st.caption(f"📊 Clasificación: {_nombre_l} #{_pos_l}  ·  {_nombre_v} #{_pos_v}")
 
     # ── Forma reciente — autocompletada al cargar desde Football-Data.org ────
     _sec("Forma reciente (últimos 5)", opcional=True)
