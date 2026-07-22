@@ -740,25 +740,34 @@ def semaforo_mini_html(estado: str) -> str:
     )
 
 
-def historial_card_css(prefix: str, key: str, incluye_expander: bool = True) -> str:
+def historial_card_css(prefix: str, key: str, incluye_expander: bool = True,
+                        max_width: int = 900) -> str:
     """
     CSS compartido de las tarjetas de página de historial (Historial Dominada
-    y Estadísticas / Historial Análisis Claude): tarjeta en 2 líneas —
-    línea 1 = título del partido + [fecha + semáforo] a la derecha;
-    línea 2 = badges — con max-width 900px y expander pegado del mismo ancho.
+    y Estadísticas / Historial Análisis Claude): una sola fila flex-wrap
+    (título + badges + [fecha + semáforo]) con `max_width` px — si el
+    contenido no cabe en una línea, esa fila puntual envuelve sola, sin
+    tocar el resto.
 
     Cada página instancia esto con su propio prefijo de clase ("dh"/"hc") y
     su propia `key` de st.container() que envuelve el listado, así las
     clases no colisionan entre páginas, pero el CSS base es uno solo: la
     próxima mejora de este patrón se hace aquí una vez, no en cada módulo.
+    `max_width` es ajustable por página según cuánto contenido tengan sus
+    badges.
 
-    `incluye_expander=False` omite las reglas de `st.expander` — úsalo si
-    esa página reemplazó el expander nativo por otro patrón (p.ej. el
-    checkbox de lazy-render de Estadísticas), para no dejar CSS muerto.
+    `incluye_expander=False` omite las reglas de `st.expander` y en su
+    lugar da al `st.checkbox` de esa página (patrón de lazy-render) el
+    mismo left-edge/max-width/aspecto de barra que tendría un expander —
+    úsalo si esa página reemplazó el expander nativo por ese patrón.
     """
-    _css_expander = f"""
-/* ── Acordeón "Ver detalles" — pegado, mismo ancho, más bajo que la tarjeta ── */
-.st-key-{key} [data-testid="stExpander"] {{ margin:0 !important; max-width:900px; }}
+    if incluye_expander:
+        _css_toggle = f"""
+/* ── Acordeón "Ver detalles" — pegado, mismo ancho y mismo left-edge que la tarjeta ── */
+.st-key-{key} [data-testid="stExpander"] {{
+    margin:0 !important; width:100% !important;
+    max-width:{max_width}px !important; box-sizing:border-box !important;
+}}
 .st-key-{key} [data-testid="stExpander"] summary {{
     min-height:0 !important; height:32px !important;
     padding:0 12px !important; font-size:11px !important;
@@ -766,9 +775,23 @@ def historial_card_css(prefix: str, key: str, incluye_expander: bool = True) -> 
 .st-key-{key} [data-testid="stExpander"] summary svg {{ width:13px !important; height:13px !important; }}
 .st-key-{key} [data-testid="stExpanderDetails"] {{ padding:10px !important; }}
 @media (max-width: 767px) {{
-    .st-key-{key} [data-testid="stExpander"] {{ max-width:100%; }}
+    .st-key-{key} [data-testid="stExpander"] {{ max-width:100% !important; }}
 }}
-""" if incluye_expander else ""
+"""
+    else:
+        _css_toggle = f"""
+/* ── Checkbox de lazy-render — misma barra/left-edge/ancho que tendría un expander ── */
+.st-key-{key} [data-testid="stCheckbox"] {{
+    background:var(--bg-tarjeta) !important; border:1px solid var(--borde) !important;
+    border-radius:6px; margin:0 !important; width:100% !important;
+    max-width:{max_width}px !important; box-sizing:border-box !important;
+    padding:6px 12px !important; min-height:32px;
+}}
+.st-key-{key} [data-testid="stCheckbox"] label {{ font-size:11px !important; }}
+@media (max-width: 767px) {{
+    .st-key-{key} [data-testid="stCheckbox"] {{ max-width:100% !important; }}
+}}
+"""
 
     return f"""
 <style>
@@ -776,53 +799,63 @@ def historial_card_css(prefix: str, key: str, incluye_expander: bool = True) -> 
     background:var(--bg-tarjeta); border:1px solid var(--borde); border-radius:10px;
     border-left:3px solid var(--borde);
     padding:12px 14px; margin:0;
-    width:100%; max-width:900px; box-sizing:border-box;
+    width:100%; max-width:{max_width}px; box-sizing:border-box;
 }}
-.{prefix}-fila1 {{
-    display:flex; align-items:center; justify-content:space-between; gap:10px;
+.{prefix}-row {{
+    display:flex; flex-wrap:wrap; align-items:center; gap:10px;
 }}
 .{prefix}-partido {{
     font-size:13px; font-weight:700; color:var(--acento-morado);
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;
+    white-space:nowrap; flex:0 0 auto;
 }}
-.{prefix}-right {{ display:flex; align-items:center; gap:10px; flex:0 0 auto; }}
-.{prefix}-fecha {{ font-size:10px; color:var(--texto-apagado); white-space:nowrap; opacity:.75; }}
-.{prefix}-badges {{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:8px; }}
+.{prefix}-badges {{
+    display:flex; gap:6px; flex-wrap:wrap; align-items:center;
+    flex:1 1 auto; min-width:0;
+}}
 .{prefix}-badge {{
     font-size:11px; font-weight:600; border-radius:6px; height:22px;
     display:inline-flex; align-items:center;
     padding:0 9px; border:1px solid; white-space:nowrap;
 }}
+.{prefix}-right {{
+    display:flex; align-items:center; gap:10px; flex:0 0 auto; margin-left:auto;
+}}
+.{prefix}-fecha {{ font-size:10px; color:var(--texto-apagado); white-space:nowrap; opacity:.75; }}
 
 @media (max-width: 767px) {{
-    .{prefix}-fila1  {{ flex-wrap:wrap; }}
-    .{prefix}-right  {{ width:100%; justify-content:space-between; }}
+    .{prefix}-right {{ width:100%; justify-content:space-between; margin-left:0; }}
 }}
 
 .st-key-{key} [data-testid="stVerticalBlock"] {{ gap:8px !important; }}
 .st-key-{key} [data-testid="stElementContainer"] {{ margin-bottom:0 !important; }}
-{_css_expander}</style>
+{_css_toggle}</style>
 """
 
 
 def historial_card_html(prefix: str, *, color_borde: str, partido: str,
                          fecha: str, estado_norm: str, badges_html: str) -> str:
     """
-    Tarjeta de 2 líneas para páginas de historial, usando las clases
-    generadas por historial_card_css() con el mismo `prefix`. `badges_html`
-    ya viene renderizado por el llamador (el contenido de los badges es
-    específico de cada página).
+    Tarjeta de una sola fila flex (título + badges + [fecha + semáforo]),
+    usando las clases generadas por historial_card_css() con el mismo
+    `prefix`. `badges_html` ya viene renderizado por el llamador (el
+    contenido de los badges es específico de cada página).
+
+    La fila es flex-wrap: si título+badges+fecha caben en el max_width de
+    la página, queda en una sola línea compacta; si algún registro puntual
+    tiene un nombre de equipo muy largo y no cabe, esa fila concreta
+    envuelve a una segunda línea sola — sin necesidad de dos layouts
+    distintos ni de decidirlo a mano por página.
     """
     return (
         f'<div class="{prefix}-card" style="border-left-color:{color_borde};">'
-        f'<div class="{prefix}-fila1">'
+        f'<div class="{prefix}-row">'
         f'<span class="{prefix}-partido">⚽ {partido}</span>'
+        f'<div class="{prefix}-badges">{badges_html}</div>'
         f'<div class="{prefix}-right">'
         f'<span class="{prefix}-fecha">{fecha}</span>'
         f'{semaforo_mini_html(estado_norm)}'
         f'</div>'
         f'</div>'
-        f'<div class="{prefix}-badges">{badges_html}</div>'
         f'</div>'
     )
 

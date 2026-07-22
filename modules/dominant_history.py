@@ -81,7 +81,7 @@ def mostrar() -> None:
 
     paleta = _paleta_activa()
     st.markdown(_CSS, unsafe_allow_html=True)
-    st.markdown(historial_card_css("dh", "dh_lista"), unsafe_allow_html=True)
+    st.markdown(historial_card_css("dh", "dh_lista", max_width=720), unsafe_allow_html=True)
 
     historial = _cargar()
 
