@@ -1957,33 +1957,95 @@ with st.sidebar:
     )
 
 # ─────────────────────────────────────────────────────────────────────
-#  HERO BANNER — imagen de estadio + degradado + título + botones
+#  HERO BANNER — carrusel de 4 imágenes (CSS puro) + degradado + título + botones
 # ─────────────────────────────────────────────────────────────────────
 # background-image via <style> + clase CSS (DOMPurify sanitiza data: URIs
 # en atributos style inline pero los permite dentro de bloques <style>)
 import base64 as _b64mod
-_estadio_path = Path(__file__).parent / "assets" / "estadio-jugadores.png"
+import random as _random_hero
+
+_HERO_IMAGENES = [
+    Path(__file__).parent / "assets" / "estadio-jugadores.png",
+    Path(__file__).parent / "assets" / "campeones.png",
+    Path(__file__).parent / "assets" / "copa.png",
+    Path(__file__).parent / "assets" / "estadioMundial.png",
+]
+_HERO_SEG_S = 6    # segundos que cada imagen queda visible (incl. fundidos)
+_HERO_FADE_S = 1   # duración del fundido entre imágenes
 
 
 @st.cache_data
-def _leer_imagen_b64(ruta: str) -> str:
-    """Lee y codifica en base64 una imagen — se ejecuta en TODAS las páginas
-    (el hero banner está antes del enrutamiento), cachear evita releer el
-    archivo y recodificarlo en cada rerun."""
-    return _b64mod.b64encode(Path(ruta).read_bytes()).decode()
+def _leer_imagen_b64(ruta: str, max_ancho: int = 1920, calidad: int = 82) -> str:
+    """
+    Lee una imagen, la redimensiona si excede max_ancho px de ancho y la
+    recodifica como JPEG base64 (mucho más liviano que PNG para fotos:
+    ~85-90% menos peso). Se ejecuta en TODAS las páginas (el hero está
+    antes del enrutamiento) — cachear evita releer/recodificar en cada
+    rerun. Devuelve (b64, mime).
+    """
+    from PIL import Image
+    import io
+
+    img = Image.open(ruta)
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    if img.width > max_ancho:
+        alto_nuevo = round(img.height * max_ancho / img.width)
+        img = img.resize((max_ancho, alto_nuevo), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=calidad, optimize=True)
+    return _b64mod.b64encode(buf.getvalue()).decode()
 
 
-if _estadio_path.exists():
-    _estadio_b64 = _leer_imagen_b64(str(_estadio_path))
-    st.markdown(
-        f'<style>.jbl-hero{{background-image:url("data:image/png;base64,{_estadio_b64}");'
-        f'background-size:cover;background-position:center;}}</style>',
-        unsafe_allow_html=True,
-    )
+_hero_rutas = [p for p in _HERO_IMAGENES if p.exists()]
+if _hero_rutas:
+    # Orden aleatorio por carga de página; con @st.cache_data en la lectura,
+    # este shuffle es lo único que "cambia" por rerun (no afecta el ciclo,
+    # que corre 100% en CSS una vez pintado el HTML).
+    _orden_hero = _hero_rutas.copy()
+    _random_hero.shuffle(_orden_hero)
+    _n_hero = len(_orden_hero)
+    _ciclo_s = _HERO_SEG_S * _n_hero
+    _pct_fade = round(_HERO_FADE_S / _ciclo_s * 100, 4)
+    _pct_hold_fin = round((_HERO_SEG_S - _HERO_FADE_S) / _ciclo_s * 100, 4)
+    _pct_slot = round(_HERO_SEG_S / _ciclo_s * 100, 4)
+
+    _capas_html = ""
+    _capas_css = f"""
+@keyframes jbl-hero-fade {{
+    0%    {{ opacity: 0; }}
+    {_pct_fade}% {{ opacity: 1; }}
+    {_pct_hold_fin}% {{ opacity: 1; }}
+    {_pct_slot}% {{ opacity: 0; }}
+    100%  {{ opacity: 0; }}
+}}
+.jbl-hero-capa {{
+    position:absolute; inset:0; background-size:cover; background-position:center;
+    opacity:0; pointer-events:none;
+    animation:jbl-hero-fade {_ciclo_s}s ease-in-out infinite;
+}}
+"""
+    for _i, _ruta in enumerate(_orden_hero):
+        _b64 = _leer_imagen_b64(str(_ruta))
+        # delay negativo = arranca ya "adelantada" esos segundos — la 1ª
+        # capa nace a mitad de su tramo de visibilidad (sin flash en negro
+        # al cargar) y las demás quedan escalonadas cada _HERO_SEG_S.
+        _delay = -(_HERO_FADE_S + _HERO_SEG_S * _i)
+        _capas_css += (
+            f'.jbl-hero-capa-{_i} {{ background-image:url("data:image/jpeg;base64,{_b64}"); '
+            f'animation-delay:{_delay}s; }}\n'
+        )
+        _capas_html += f'<div class="jbl-hero-capa jbl-hero-capa-{_i}"></div>'
+
+    st.markdown(f"<style>{_capas_css}</style>", unsafe_allow_html=True)
+else:
+    _capas_html = ""
 
 st.markdown(
     f'<div class="jbl-hero" style="margin:0 -3rem 20px;width:calc(100% + 6rem);min-height:320px;'
     f'position:relative;overflow:hidden;background-color:#0F172A;">'
+    # capas del carrusel (detrás del degradado y del contenido)
+    f'{_capas_html}'
     # gradient overlay
     f'<div style="position:absolute;inset:0;'
     f'background:linear-gradient(90deg,rgba(8,12,25,0.93) 0%,rgba(8,12,25,0.68) 45%,rgba(8,12,25,0.12) 100%);"></div>'
