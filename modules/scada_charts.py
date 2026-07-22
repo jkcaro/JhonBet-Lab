@@ -736,6 +736,136 @@ def semaforo_mini_html(estado: str) -> str:
     )
 
 
+def historial_card_css(prefix: str, key: str) -> str:
+    """
+    CSS compartido de las tarjetas de página de historial (Historial Dominada
+    y Estadísticas / Historial Análisis Claude): tarjeta en 2 líneas —
+    línea 1 = título del partido + [fecha + semáforo] a la derecha;
+    línea 2 = badges — con max-width 900px y expander pegado del mismo ancho.
+
+    Cada página instancia esto con su propio prefijo de clase ("dh"/"hc") y
+    su propia `key` de st.container() que envuelve el listado, así las
+    clases no colisionan entre páginas, pero el CSS base es uno solo: la
+    próxima mejora de este patrón se hace aquí una vez, no en cada módulo.
+    """
+    return f"""
+<style>
+.{prefix}-card {{
+    background:var(--bg-tarjeta); border:1px solid var(--borde); border-radius:10px;
+    border-left:3px solid var(--borde);
+    padding:12px 14px; margin:0;
+    width:100%; max-width:900px; box-sizing:border-box;
+}}
+.{prefix}-fila1 {{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+}}
+.{prefix}-partido {{
+    font-size:13px; font-weight:700; color:var(--acento-morado);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0;
+}}
+.{prefix}-right {{ display:flex; align-items:center; gap:10px; flex:0 0 auto; }}
+.{prefix}-fecha {{ font-size:10px; color:var(--texto-apagado); white-space:nowrap; opacity:.75; }}
+.{prefix}-badges {{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:8px; }}
+.{prefix}-badge {{
+    font-size:11px; font-weight:600; border-radius:6px; height:22px;
+    display:inline-flex; align-items:center;
+    padding:0 9px; border:1px solid; white-space:nowrap;
+}}
+
+@media (max-width: 767px) {{
+    .{prefix}-fila1  {{ flex-wrap:wrap; }}
+    .{prefix}-right  {{ width:100%; justify-content:space-between; }}
+}}
+
+/* ── Acordeón "Ver detalles" — pegado, mismo ancho, más bajo que la tarjeta ── */
+.st-key-{key} [data-testid="stVerticalBlock"] {{ gap:8px !important; }}
+.st-key-{key} [data-testid="stElementContainer"] {{ margin-bottom:0 !important; }}
+.st-key-{key} [data-testid="stExpander"] {{ margin:0 !important; max-width:900px; }}
+.st-key-{key} [data-testid="stExpander"] summary {{
+    min-height:0 !important; height:32px !important;
+    padding:0 12px !important; font-size:11px !important;
+}}
+.st-key-{key} [data-testid="stExpander"] summary svg {{ width:13px !important; height:13px !important; }}
+.st-key-{key} [data-testid="stExpanderDetails"] {{ padding:10px !important; }}
+@media (max-width: 767px) {{
+    .st-key-{key} [data-testid="stExpander"] {{ max-width:100%; }}
+}}
+</style>
+"""
+
+
+def historial_card_html(prefix: str, *, color_borde: str, partido: str,
+                         fecha: str, estado_norm: str, badges_html: str) -> str:
+    """
+    Tarjeta de 2 líneas para páginas de historial, usando las clases
+    generadas por historial_card_css() con el mismo `prefix`. `badges_html`
+    ya viene renderizado por el llamador (el contenido de los badges es
+    específico de cada página).
+    """
+    return (
+        f'<div class="{prefix}-card" style="border-left-color:{color_borde};">'
+        f'<div class="{prefix}-fila1">'
+        f'<span class="{prefix}-partido">⚽ {partido}</span>'
+        f'<div class="{prefix}-right">'
+        f'<span class="{prefix}-fecha">{fecha}</span>'
+        f'{semaforo_mini_html(estado_norm)}'
+        f'</div>'
+        f'</div>'
+        f'<div class="{prefix}-badges">{badges_html}</div>'
+        f'</div>'
+    )
+
+
+def paginar_lista(lista: list, key: str, por_pagina: int = 15) -> tuple[list, int, int]:
+    """
+    Pagina `lista` en bloques de `por_pagina`. Guarda la página actual en
+    st.session_state[key] para que sobreviva entre reruns. Si la lista se
+    encoge (p.ej. por un filtro de texto) y la página guardada queda fuera
+    de rango, se recorta automáticamente a la última página válida.
+
+    Devuelve (subset_de_esta_pagina, pagina_actual, total_paginas) — el
+    llamador solo itera sobre `subset_de_esta_pagina` y pinta los controles
+    con controles_paginacion() usando los otros dos valores.
+    """
+    total = len(lista)
+    total_paginas = max(1, -(-total // por_pagina))  # ceil division
+    pagina_actual = st.session_state.get(key, 1)
+    pagina_actual = min(max(1, pagina_actual), total_paginas)
+    st.session_state[key] = pagina_actual
+    ini = (pagina_actual - 1) * por_pagina
+    return lista[ini:ini + por_pagina], pagina_actual, total_paginas
+
+
+def controles_paginacion(key: str, pagina_actual: int, total_paginas: int,
+                          sufijo: str = "") -> None:
+    """
+    Botones Anterior/Siguiente + indicador 'Página X de Y'. No hace nada si
+    cabe todo en 1 página. `sufijo` permite pintar los controles dos veces
+    (arriba y abajo de la lista) sin chocar los widget keys — ambas
+    instancias leen/escriben el mismo `key` de session_state, así que
+    quedan sincronizadas.
+    """
+    if total_paginas <= 1:
+        return
+    col_prev, col_ind, col_next = st.columns([1, 2, 1])
+    with col_prev:
+        if st.button("⬅ Anterior", key=f"{key}{sufijo}_prev", use_container_width=True,
+                     disabled=pagina_actual <= 1):
+            st.session_state[key] = pagina_actual - 1
+            st.rerun()
+    with col_ind:
+        st.markdown(
+            f'<div style="text-align:center;font-size:12px;color:var(--texto-apagado);'
+            f'padding-top:7px;">Página {pagina_actual} de {total_paginas}</div>',
+            unsafe_allow_html=True,
+        )
+    with col_next:
+        if st.button("Siguiente ➡", key=f"{key}{sufijo}_next", use_container_width=True,
+                     disabled=pagina_actual >= total_paginas):
+            st.session_state[key] = pagina_actual + 1
+            st.rerun()
+
+
 def tarjeta_veredicto_html(titulo: str, valor_texto: str, estado: str) -> str:
     """
     Tarjeta de veredicto estilo DeOP con semáforo de estado. El color de

@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 import streamlit as st
 
-from modules.scada_charts import semaforo_mini_html
+from modules.scada_charts import (
+    historial_card_css, historial_card_html, paginar_lista, controles_paginacion,
+)
 
 _RUTA = Path(__file__).parent.parent / "data" / "dominant_history.json"
 
@@ -23,46 +25,6 @@ _CSS = """
 .dh-stat-val { font-size:18px; font-weight:800; line-height:1.1; }
 .dh-stat-lbl { font-size:9px; color:var(--texto-apagado); text-transform:uppercase;
                letter-spacing:1px; margin-top:2px; }
-.dh-card {
-    background:var(--bg-tarjeta); border:0; border-left:3px solid var(--borde);
-    border-bottom:1px solid var(--borde);
-    padding:4px 10px; margin:0;
-    display:flex; align-items:center; justify-content:space-between; gap:10px;
-    width:100%; max-width:900px; box-sizing:border-box;
-}
-.dh-left {
-    display:flex; align-items:center; gap:8px; min-width:0;
-    overflow-x:auto; flex:0 1 auto;
-}
-.dh-right { display:flex; align-items:center; gap:10px; flex:0 0 auto; }
-.dh-partido { font-size:12px; font-weight:700; color:var(--acento-morado); white-space:nowrap; flex:0 0 auto; }
-.dh-fecha   { font-size:9px; color:var(--texto-apagado); white-space:nowrap; opacity:.75; flex:0 0 auto; }
-.dh-badges  { display:flex; gap:4px; flex-wrap:nowrap; align-items:center; flex:0 0 auto; }
-.dh-badge   { font-size:11px; font-weight:600; border-radius:6px; height:18px;
-              display:inline-flex; align-items:center;
-              padding:0 7px; border:1px solid; white-space:nowrap; flex:0 0 auto; }
-
-@media (max-width: 767px) {
-    .dh-card  { flex-direction:column; align-items:flex-start; max-width:100%; gap:6px; }
-    .dh-left  { width:100%; }
-    .dh-right { width:100%; justify-content:space-between; }
-}
-
-/* ── Densidad general de la página: filas compactas tipo Sofascore/Discord ── */
-.st-key-dh_lista [data-testid="stVerticalBlock"] { gap:4px !important; }
-.st-key-dh_lista [data-testid="stElementContainer"] { margin-bottom:0 !important; }
-
-/* ── Acordeón "Ver detalles" — altura mínima, mismo ancho y alineado con la tarjeta ── */
-.st-key-dh_lista [data-testid="stExpander"] { margin:0 !important; max-width:900px; }
-.st-key-dh_lista [data-testid="stExpander"] summary {
-    min-height:0 !important; height:28px !important;
-    padding:0 10px !important; font-size:11px !important;
-}
-.st-key-dh_lista [data-testid="stExpander"] summary svg { width:12px !important; height:12px !important; }
-.st-key-dh_lista [data-testid="stExpanderDetails"] { padding:8px !important; }
-@media (max-width: 767px) {
-    .st-key-dh_lista [data-testid="stExpander"] { max-width:100%; }
-}
 
 /* ── Botón "Limpiar" — acción destructiva, borde rojo (semántico, fijo) ── */
 [data-testid="stBaseButton-primary"], [data-testid="stBaseButton-primaryFormSubmit"] {
@@ -119,6 +81,7 @@ def mostrar() -> None:
 
     paleta = _paleta_activa()
     st.markdown(_CSS, unsafe_allow_html=True)
+    st.markdown(historial_card_css("dh", "dh_lista"), unsafe_allow_html=True)
 
     historial = _cargar()
 
@@ -180,9 +143,18 @@ def mostrar() -> None:
 
     st.markdown("<hr style='border-color:var(--borde);margin:2px 0 10px'>", unsafe_allow_html=True)
 
+    # ── Paginación preventiva — reutiliza el mismo paginador de Estadísticas.
+    # El contenido de estos expanders es HTML plano (sin Plotly), así que hoy
+    # no hay coste de render que reducir; solo evita que la lista siga
+    # creciendo sin límite a futuro ──
+    pagina_items, pagina_actual, total_paginas = paginar_lista(
+        historial, key="dh_pagina", por_pagina=15
+    )
+    controles_paginacion("dh_pagina", pagina_actual, total_paginas, sufijo="_top")
+
     # ── Tarjetas ─────────────────────────────────────────────────────────────
     with st.container(key="dh_lista"):
-        for i, entrada in enumerate(historial):
+        for i, entrada in enumerate(pagina_items):
             partido   = entrada.get("partido",    "Partido desconocido")
             fecha     = entrada.get("fecha_hora", "—")
             nom_fav   = entrada.get("nom_fav",    "Favorito")
@@ -210,27 +182,22 @@ def mostrar() -> None:
                            else "PRECAUCIÓN" if "PRECAUC" in estado.upper()
                            else "NO APOSTAR")
 
-            st.markdown(
-                f'<div class="dh-card" style="border-left-color:{col_v};">'
-                f'<div class="dh-left">'
-                f'<span class="dh-partido">⚽ {partido}</span>'
-                f'<div class="dh-badges">'
+            badges_html = (
                 f'<span class="dh-badge" style="color:{dom_col};border-color:{dom_col}44;background:{dom_col}11;">🔥 {dom_txt}</span>'
                 f'<span class="dh-badge" style="color:var(--texto-apagado);border-color:var(--borde);background:var(--bg-elemento);">{n_ok}/4 reglas</span>'
                 f'<span class="dh-badge" style="color:{edge_col};border-color:{edge_col}44;background:{edge_col}11;">O1.5 {sign_e}{edge_o15}%</span>'
                 f'<span class="dh-badge" style="color:{col_v};border-color:{col_vb};background:{col_v}11;'
                 f'font-size:11px;font-weight:700;">{estado}</span>'
-                f'</div>'
-                f'</div>'
-                f'<div class="dh-right">'
-                f'<span class="dh-fecha">{fecha}</span>'
-                f'{semaforo_mini_html(estado_norm)}'
-                f'</div>'
-                f'</div>',
+            )
+            st.markdown(
+                historial_card_html(
+                    "dh", color_borde=col_v, partido=partido, fecha=fecha,
+                    estado_norm=estado_norm, badges_html=badges_html,
+                ),
                 unsafe_allow_html=True,
             )
 
-            with st.expander(f"Ver detalles — {nom_fav} vs {nom_riv}", expanded=False):
+            with st.expander("Ver detalles", expanded=False):
                 col_izq, col_der = st.columns(2, gap="medium")
 
                 with col_izq:
@@ -320,3 +287,5 @@ def mostrar() -> None:
                         f'</div>',
                         unsafe_allow_html=True,
                     )
+
+    controles_paginacion("dh_pagina", pagina_actual, total_paginas, sufijo="_bottom")

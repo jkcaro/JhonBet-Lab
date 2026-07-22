@@ -6,7 +6,9 @@ from pathlib import Path
 import streamlit as st
 
 from modules import etiquetas_mercado as em
-from modules.scada_charts import semaforo_mini_html
+from modules.scada_charts import (
+    historial_card_css, historial_card_html, paginar_lista, controles_paginacion,
+)
 
 os.makedirs(Path(__file__).parent.parent / "data", exist_ok=True)
 
@@ -29,47 +31,6 @@ _CSS = """
 .hc-stat-val { font-size:18px; font-weight:800; line-height:1.1; }
 .hc-stat-lbl { font-size:9px; color:var(--texto-apagado); text-transform:uppercase;
                letter-spacing:1px; margin-top:2px; }
-.hc-card {
-    background:var(--bg-tarjeta); border:0; border-left:3px solid var(--borde);
-    border-bottom:1px solid var(--borde);
-    padding:4px 10px; margin:0;
-    display:flex; align-items:center; justify-content:space-between; gap:10px;
-    width:100%; max-width:900px; box-sizing:border-box;
-}
-.hc-left {
-    display:flex; align-items:center; gap:8px; min-width:0;
-    overflow-x:auto; flex:0 1 auto;
-}
-.hc-right { display:flex; align-items:center; gap:10px; flex:0 0 auto; }
-.hc-partido { font-size:12px; font-weight:700; color:var(--acento-morado); white-space:nowrap; flex:0 0 auto; }
-.hc-fecha   { font-size:9px; color:var(--texto-apagado); white-space:nowrap; opacity:.75; flex:0 0 auto; }
-.hc-badges  { display:flex; gap:4px; flex-wrap:nowrap; align-items:center; flex:0 0 auto; }
-.hc-badge   { font-size:11px; font-weight:600; border-radius:6px; height:18px;
-              display:inline-flex; align-items:center;
-              padding:0 7px; border:1px solid; white-space:nowrap; flex:0 0 auto; }
-
-@media (max-width: 767px) {
-    .hc-card  { flex-direction:column; align-items:flex-start; max-width:100%; gap:6px; }
-    .hc-left  { width:100%; }
-    .hc-right { width:100%; justify-content:space-between; }
-}
-
-/* ── Densidad general de la página: filas compactas — mismo patrón que Historial Dominada ── */
-.st-key-hc_lista [data-testid="stVerticalBlock"] { gap:4px !important; }
-.st-key-hc_lista [data-testid="stElementContainer"] { margin-bottom:0 !important; }
-
-/* ── Acordeón "Ver análisis completo" — altura mínima, mismo ancho y alineado con la tarjeta ── */
-.st-key-hc_lista [data-testid="stExpander"] { margin:0 !important; max-width:900px; }
-.st-key-hc_lista [data-testid="stExpander"] summary {
-    min-height:0 !important; height:28px !important;
-    padding:0 10px !important; font-size:11px !important;
-}
-.st-key-hc_lista [data-testid="stExpander"] summary svg { width:12px !important; height:12px !important; }
-.st-key-hc_lista [data-testid="stExpanderDetails"] { padding:8px !important; }
-@media (max-width: 767px) {
-    .st-key-hc_lista [data-testid="stExpander"] { max-width:100%; }
-}
-
 /* ── Botón "Limpiar" — acción destructiva, borde rojo (semántico, fijo) ── */
 [data-testid="stBaseButton-primary"], [data-testid="stBaseButton-primaryFormSubmit"] {
     background-color: var(--bg-tarjeta) !important;
@@ -260,6 +221,7 @@ def _mostrar_scada(entrada: dict, idx: int = 0) -> None:
 def mostrar() -> None:
     """Renderiza la página de Historial de Análisis Claude."""
     st.markdown(_CSS, unsafe_allow_html=True)
+    st.markdown(historial_card_css("hc", "hc_lista"), unsafe_allow_html=True)
 
     historial = _cargar()
 
@@ -331,17 +293,23 @@ def mostrar() -> None:
     # Aplicar filtro — compara tanto contra la clave canónica guardada como
     # contra el texto visible nuevo, para que el usuario pueda buscar con
     # cualquiera de los dos (p.ej. "1X2" o "quién gana").
+    # Cada entrada viaja junto a su índice ORIGINAL (posición en el JSON tal
+    # cual está en disco) — ese índice es la clave estable de session_state
+    # para el toggle "abierto/cerrado" de cada tarjeta, y no cambia aunque
+    # el filtro de texto o la página actual reduzcan qué se muestra.
+    historial_con_idx = list(enumerate(historial))
+
     if filtro:
         _f = filtro.lower()
         historial_vis = [
-            e for e in historial
+            (idx, e) for idx, e in historial_con_idx
             if _f in e.get("partido",  "").lower()
             or _f in e.get("mercado",  "").lower()
             or _f in em.titulo_mercado(e.get("mercado", "")).lower()
             or _f in e.get("veredicto","").lower()
         ]
     else:
-        historial_vis = historial
+        historial_vis = historial_con_idx
 
     if filtro and not historial_vis:
         st.markdown(
@@ -354,9 +322,16 @@ def mostrar() -> None:
 
     st.markdown("<hr style='border-color:var(--borde);margin:4px 0 10px'>", unsafe_allow_html=True)
 
+    # ── Paginación — evita construir las 4 gráficas SCADA de TODOS los
+    # registros en cada rerun; solo se procesan los de la página actual ──
+    pagina_items, pagina_actual, total_paginas = paginar_lista(
+        historial_vis, key="hc_pagina", por_pagina=15
+    )
+    controles_paginacion("hc_pagina", pagina_actual, total_paginas, sufijo="_top")
+
     # ── Tarjetas ────────────────────────────────────────────────────────
     with st.container(key="hc_lista"):
-        for i, entrada in enumerate(historial_vis):
+        for idx, entrada in pagina_items:
             partido = entrada.get("partido",  "Partido desconocido")
             fecha   = entrada.get("fecha_hora", "—")
             # "mercado" guardado es la clave canónica (compatibilidad con el JSON ya
@@ -376,62 +351,69 @@ def mostrar() -> None:
                            else "PRECAUCIÓN" if "PRECAUC" in verdict.upper()
                            else "NO APOSTAR")
 
-            st.markdown(
-                f'<div class="hc-card" style="border-left-color:{col_v};">'
-                f'<div class="hc-left">'
-                f'<span class="hc-partido">⚽ {partido}</span>'
-                f'<div class="hc-badges">'
+            badges_html = (
                 f'<span class="hc-badge" style="color:{_PURP};border-color:#a78bfa44;background:#a78bfa11;">{mercado}</span>'
                 f'<span class="hc-badge" style="color:{edge_col};border-color:{edge_col}44;background:{edge_col}11;">{em.EDGE_LABEL.capitalize()} {sign_e}{edge}%</span>'
                 f'<span class="hc-badge" style="color:var(--texto-apagado);border-color:var(--borde);background:var(--bg-elemento);">{puntos}/5 pts</span>'
                 f'<span class="hc-badge" style="color:{col_v};border-color:{col_vb};background:{col_v}11;'
                 f'font-size:11px;font-weight:700;">{verdict}</span>'
-                f'</div>'
-                f'</div>'
-                f'<div class="hc-right">'
-                f'<span class="hc-fecha">{fecha}</span>'
-                f'{semaforo_mini_html(estado_norm)}'
-                f'</div>'
-                f'</div>',
+            )
+            st.markdown(
+                historial_card_html(
+                    "hc", color_borde=col_v, partido=partido, fecha=fecha,
+                    estado_norm=estado_norm, badges_html=badges_html,
+                ),
                 unsafe_allow_html=True,
             )
 
-            with st.expander("Ver análisis completo + gráficos SCADA", expanded=False):
-                # ── Gráficos SCADA (layout propio 2 columnas) ──
-                _mostrar_scada(entrada, idx=i)
+            # Lazy render: `with st.expander()` NO es perezoso — su contenido se
+            # ejecuta en cada rerun aunque esté colapsado (confirmado en la Fase 1
+            # de medición: 314 gráficos Plotly construidos con 0 expanders abiertos).
+            # Con un checkbox + session_state, _mostrar_scada() y el texto de Claude
+            # solo se construyen cuando el usuario efectivamente lo pidió.
+            abierto = st.checkbox(
+                "📊 Ver análisis completo + gráficos SCADA",
+                key=f"hc_abierto_{idx}",
+            )
+            if abierto:
+                with st.container(border=True):
+                    # ── Gráficos SCADA (layout propio 2 columnas) ──
+                    _mostrar_scada(entrada, idx=idx)
 
-                st.markdown(
-                    '<hr style="border-color:var(--borde);margin:10px 0 8px">',
-                    unsafe_allow_html=True,
-                )
-                st.markdown(
-                    '<div style="font-size:10px;color:var(--acento-morado);font-weight:800;letter-spacing:1.5px;'
-                    'margin-bottom:8px;">'
-                    '◈ ANÁLISIS CLAUDE</div>',
-                    unsafe_allow_html=True,
-                )
-
-                # ── Texto en dos columnas con caja ──
-                secciones = texto.split("\n\n---\n\n")
-                mitad     = max(1, len(secciones) // 2)
-                txt_izq   = "\n\n---\n\n".join(secciones[:mitad])
-                txt_der   = "\n\n---\n\n".join(secciones[mitad:]) if len(secciones) > 1 else ""
-
-                _estilo_caja = (
-                    "background:var(--bg-tarjeta);border:1px solid var(--borde);border-radius:8px;"
-                    "padding:14px 16px;height:100%;color:var(--texto);"
-                )
-                col_txt_izq, col_txt_der = st.columns(2, gap="medium")
-                with col_txt_izq:
                     st.markdown(
-                        f'<div style="{_estilo_caja}">', unsafe_allow_html=True
+                        '<hr style="border-color:var(--borde);margin:10px 0 8px">',
+                        unsafe_allow_html=True,
                     )
-                    st.markdown(txt_izq)
-                    st.markdown("</div>", unsafe_allow_html=True)
-                with col_txt_der:
-                    if txt_der:
+                    st.markdown(
+                        '<div style="font-size:10px;color:var(--acento-morado);font-weight:800;letter-spacing:1.5px;'
+                        'margin-bottom:8px;">'
+                        '◈ ANÁLISIS CLAUDE</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                    # ── Texto en dos columnas con caja ──
+                    secciones = texto.split("\n\n---\n\n")
+                    mitad     = max(1, len(secciones) // 2)
+                    txt_izq   = "\n\n---\n\n".join(secciones[:mitad])
+                    txt_der   = "\n\n---\n\n".join(secciones[mitad:]) if len(secciones) > 1 else ""
+
+                    _estilo_caja = (
+                        "background:var(--bg-tarjeta);border:1px solid var(--borde);border-radius:8px;"
+                        "padding:14px 16px;height:100%;color:var(--texto);"
+                    )
+                    col_txt_izq, col_txt_der = st.columns(2, gap="medium")
+                    with col_txt_izq:
                         st.markdown(
                             f'<div style="{_estilo_caja}">', unsafe_allow_html=True
                         )
-                        st.markdown(txt_der)
+                        st.markdown(txt_izq)
                         st.markdown("</div>", unsafe_allow_html=True)
+                    with col_txt_der:
+                        if txt_der:
+                            st.markdown(
+                                f'<div style="{_estilo_caja}">', unsafe_allow_html=True
+                            )
+                            st.markdown(txt_der)
+                            st.markdown("</div>", unsafe_allow_html=True)
+
+    controles_paginacion("hc_pagina", pagina_actual, total_paginas, sufijo="_bottom")
