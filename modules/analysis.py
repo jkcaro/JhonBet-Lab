@@ -492,9 +492,18 @@ def mostrar():
     def _opt_float(key: str) -> float | None:
         v = fila.get(key)
         try:
-            return float(v)
+            vf = float(v)
+            return vf if vf == vf else None  # NaN != NaN — celda vacía en el CSV
         except (ValueError, TypeError):
             return None
+
+    def _opt_str(key: str) -> str:
+        # Celda vacía de CSV llega como NaN (float); "nan" or "" es truthy y
+        # se colaría como texto literal si no se filtra el NaN explícitamente.
+        v = fila.get(key, "")
+        if v is None or v != v:
+            return ""
+        return str(v).strip()
 
     # ── Persistir en session_state para Claude ─────────────────────────────────
     st.session_state["fuente_xg_activa"]    = fuente_xg
@@ -505,14 +514,14 @@ def mostrar():
     st.session_state["elo_local"]           = _opt_float("elo_local")
     st.session_state["elo_visit"]           = _opt_float("elo_visit")
     # Contexto de motivación (vacío si no es partido manual)
-    _mot_raw = str(fila.get("motivacion", "") or "").strip()
-    _ult_raw = str(fila.get("ultimo_partido", "") or "").strip()
+    _mot_raw = _opt_str("motivacion")
+    _ult_raw = _opt_str("ultimo_partido")
     st.session_state["motivacion_partido"]       = _mot_raw or None
     st.session_state["ultimo_partido_temporada"] = _ult_raw if _ult_raw == "Sí" else None
     # Forma reciente cargada desde Football-Data.org al añadir el partido (si la hay) —
     # prefill editable de los campos "Forma reciente" en la página Claude AI.
-    st.session_state["forma_reciente_local_csv"] = str(fila.get("forma_local", "") or "").strip()
-    st.session_state["forma_reciente_visit_csv"] = str(fila.get("forma_visitante", "") or "").strip()
+    st.session_state["forma_reciente_local_csv"] = _opt_str("forma_local")
+    st.session_state["forma_reciente_visit_csv"] = _opt_str("forma_visitante")
     st.session_state["probs_partido"] = {
         f"victoria_{nombre_local}": f"{probs['local']}%",
         "empate":                    f"{probs['empate']}%",

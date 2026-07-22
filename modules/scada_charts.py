@@ -913,6 +913,14 @@ def panel_forma_reciente(datos: dict) -> str:
     colores_led = {"W": DEOP_VERDE, "D": DEOP_GRIS, "L": DEOP_ROJO}
 
     def _leds(forma: list[str]) -> str:
+        # Forma totalmente ausente (nunca introducida) ≠ carácter no reconocido
+        # dentro de una forma real ya escrita — solo el segundo caso usa el LED
+        # gris de "no reconocido"; el primero muestra un aviso de dato ausente.
+        if not forma:
+            return (
+                f'<div style="font-size:10px;color:{DEOP_TEXTO};font-style:italic;padding:2px 0;">'
+                f'Sin datos de forma — introdúcelos en el análisis</div>'
+            )
         items = (forma + ["—"] * 5)[:5]
         html = ""
         for r in items:

@@ -145,12 +145,18 @@ def _reconstruir_datos(entrada: dict) -> dict:
     if "xg_local" not in probs:
         probs["xg_local"]     = entrada.get("xg_local",     1.5)
         probs["xg_visitante"] = entrada.get("xg_visitante", 1.2)
-    return {
+    datos = {
         "partido":        entrada.get("partido", ""),
         "mercado":        entrada.get("mercado", ""),
         "probabilidades": probs,
         "edge_por_outcome": {},
+        "forma_reciente_local":     entrada.get("forma_reciente_local", ""),
+        "forma_reciente_visitante": entrada.get("forma_reciente_visitante", ""),
     }
+    if "elo_local" in entrada and "elo_visit" in entrada:
+        datos["elo_local"] = entrada["elo_local"]
+        datos["elo_visit"] = entrada["elo_visit"]
+    return datos
 
 
 def _reconstruir_puntuacion(entrada: dict) -> dict:
@@ -183,11 +189,12 @@ def _mostrar_scada(entrada: dict, idx: int = 0) -> None:
     en vivo de "Analizar con IA" (modules/claude_analysis.py, fila1/2/3) —
     mismos datos del JSON, solo cambia el render (gauges de aguja/panel
     terminal viejos -> donuts/tarjetas DeOP). Todos los paneles nuevos ya
-    degradan solos a "—"/"sin datos" cuando falta un campo (verificado:
-    victoria1x2_modelo, elo_local/visit y forma_reciente_* nunca se
-    guardaron en el historial, ni en registros viejos ni nuevos — no es
-    incompatibilidad de época, es una limitación estructural del guardado
-    ya cubierta por el propio diseño de esos paneles).
+    degradan solos a "—"/"sin datos" cuando falta un campo. forma_reciente_*
+    y elo_local/visit se empezaron a guardar en el historial a partir de
+    esta versión; los registros anteriores no los tienen (limitación de
+    época, no de esquema) y por tanto siguen mostrando "sin datos" — es el
+    estado correcto para ellos, ya que el dato no es recuperable.
+    victoria1x2_modelo nunca se ha guardado en el historial.
     """
     from modules.scada_charts import (
         semaforo_html, gauge_donut_gris, gauge_puntos_deop,

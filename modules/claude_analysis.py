@@ -1135,7 +1135,15 @@ def _guardar_historial_claude(datos: dict, puntuacion: dict, texto: str) -> None
             k: v for k, v in puntuacion.items()
             if isinstance(v, (int, float, bool, str))
         },
+        # Forma reciente y ELO: opcionales (solo existen en partidos manuales),
+        # se guardan tal cual llegaron en `datos` para que el replay del
+        # historial (panel_forma_reciente / panel_balanza_elo) no las pierda.
+        "forma_reciente_local":     datos.get("forma_reciente_local", ""),
+        "forma_reciente_visitante": datos.get("forma_reciente_visitante", ""),
     }
+    if datos.get("elo_local") is not None and datos.get("elo_visit") is not None:
+        entrada["elo_local"] = datos["elo_local"]
+        entrada["elo_visit"] = datos["elo_visit"]
     historial: list = []
     if _RUTA_HIST_CLAUDE.exists():
         try:
