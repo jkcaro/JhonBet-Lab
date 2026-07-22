@@ -24,14 +24,45 @@ _CSS = """
 .dh-stat-lbl { font-size:9px; color:var(--texto-apagado); text-transform:uppercase;
                letter-spacing:1px; margin-top:2px; }
 .dh-card {
-    background:var(--bg-tarjeta); border:1px solid var(--borde); border-radius:10px;
-    padding:12px 14px; margin-bottom:6px; border-left:3px solid var(--borde);
+    background:var(--bg-tarjeta); border:0; border-left:3px solid var(--borde);
+    border-bottom:1px solid var(--borde);
+    padding:4px 10px; margin:0;
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    width:100%; max-width:900px; box-sizing:border-box;
 }
-.dh-partido { font-size:13px; font-weight:700; color:var(--acento-morado); }
-.dh-fecha   { font-size:10px; color:var(--texto-apagado); white-space:nowrap; }
-.dh-badges  { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; align-items:center; }
-.dh-badge   { font-size:10px; font-weight:600; border-radius:4px;
-              padding:2px 8px; border:1px solid; white-space:nowrap; }
+.dh-left {
+    display:flex; align-items:center; gap:8px; min-width:0;
+    overflow-x:auto; flex:0 1 auto;
+}
+.dh-right { display:flex; align-items:center; gap:10px; flex:0 0 auto; }
+.dh-partido { font-size:12px; font-weight:700; color:var(--acento-morado); white-space:nowrap; flex:0 0 auto; }
+.dh-fecha   { font-size:9px; color:var(--texto-apagado); white-space:nowrap; opacity:.75; flex:0 0 auto; }
+.dh-badges  { display:flex; gap:4px; flex-wrap:nowrap; align-items:center; flex:0 0 auto; }
+.dh-badge   { font-size:11px; font-weight:600; border-radius:6px; height:18px;
+              display:inline-flex; align-items:center;
+              padding:0 7px; border:1px solid; white-space:nowrap; flex:0 0 auto; }
+
+@media (max-width: 767px) {
+    .dh-card  { flex-direction:column; align-items:flex-start; max-width:100%; gap:6px; }
+    .dh-left  { width:100%; }
+    .dh-right { width:100%; justify-content:space-between; }
+}
+
+/* ── Densidad general de la página: filas compactas tipo Sofascore/Discord ── */
+.st-key-dh_lista [data-testid="stVerticalBlock"] { gap:4px !important; }
+.st-key-dh_lista [data-testid="stElementContainer"] { margin-bottom:0 !important; }
+
+/* ── Acordeón "Ver detalles" — altura mínima, mismo ancho y alineado con la tarjeta ── */
+.st-key-dh_lista [data-testid="stExpander"] { margin:0 !important; max-width:900px; }
+.st-key-dh_lista [data-testid="stExpander"] summary {
+    min-height:0 !important; height:28px !important;
+    padding:0 10px !important; font-size:11px !important;
+}
+.st-key-dh_lista [data-testid="stExpander"] summary svg { width:12px !important; height:12px !important; }
+.st-key-dh_lista [data-testid="stExpanderDetails"] { padding:8px !important; }
+@media (max-width: 767px) {
+    .st-key-dh_lista [data-testid="stExpander"] { max-width:100%; }
+}
 
 /* ── Botón "Limpiar" — acción destructiva, borde rojo (semántico, fijo) ── */
 [data-testid="stBaseButton-primary"], [data-testid="stBaseButton-primaryFormSubmit"] {
@@ -150,42 +181,39 @@ def mostrar() -> None:
     st.markdown("<hr style='border-color:var(--borde);margin:2px 0 10px'>", unsafe_allow_html=True)
 
     # ── Tarjetas ─────────────────────────────────────────────────────────────
-    for i, entrada in enumerate(historial):
-        partido   = entrada.get("partido",    "Partido desconocido")
-        fecha     = entrada.get("fecha_hora", "—")
-        nom_fav   = entrada.get("nom_fav",    "Favorito")
-        nom_riv   = entrada.get("nom_riv",    "Rival")
-        estado    = entrada.get("estado",     "NO APOSTAR")
-        n_ok      = entrada.get("n_ok",       0)
-        es_dom    = entrada.get("es_dominante", False)
-        edge_o15  = float(entrada.get("edge_o15",  0.0))
-        p_o15     = float(entrada.get("p_o15",     0.0))
-        p_hcp     = float(entrada.get("p_hcp",     0.0))
-        p_vic     = float(entrada.get("p_victoria", 0.0))
-        xg_fav    = float(entrada.get("xg_fav",    0.0))
-        xg_rival  = float(entrada.get("xg_rival",  0.0))
-        cuota_o15 = float(entrada.get("cuota_o15", 1.65))
-        top_m     = entrada.get("top_marcador", "—")
-        top_p     = float(entrada.get("top_prob", 0.0))
-        reglas    = entrada.get("reglas", [])
+    with st.container(key="dh_lista"):
+        for i, entrada in enumerate(historial):
+            partido   = entrada.get("partido",    "Partido desconocido")
+            fecha     = entrada.get("fecha_hora", "—")
+            nom_fav   = entrada.get("nom_fav",    "Favorito")
+            nom_riv   = entrada.get("nom_riv",    "Rival")
+            estado    = entrada.get("estado",     "NO APOSTAR")
+            n_ok      = entrada.get("n_ok",       0)
+            es_dom    = entrada.get("es_dominante", False)
+            edge_o15  = float(entrada.get("edge_o15",  0.0))
+            p_o15     = float(entrada.get("p_o15",     0.0))
+            p_hcp     = float(entrada.get("p_hcp",     0.0))
+            p_vic     = float(entrada.get("p_victoria", 0.0))
+            xg_fav    = float(entrada.get("xg_fav",    0.0))
+            xg_rival  = float(entrada.get("xg_rival",  0.0))
+            cuota_o15 = float(entrada.get("cuota_o15", 1.65))
+            top_m     = entrada.get("top_marcador", "—")
+            top_p     = float(entrada.get("top_prob", 0.0))
+            reglas    = entrada.get("reglas", [])
 
-        col_v, col_vb = _color_estado(estado)
-        edge_col  = _GREEN if edge_o15 >= 6 else (_YELLOW if edge_o15 >= 0 else _RED)
-        sign_e    = "+" if edge_o15 >= 0 else ""
-        dom_col   = _GREEN if es_dom else _RED
-        dom_txt   = "DOMINANTE" if es_dom else "NO DOMINANTE"
-        estado_norm = ("APOSTAR" if "APOSTAR" in estado.upper() and "NO" not in estado.upper()
-                       else "PRECAUCIÓN" if "PRECAUC" in estado.upper()
-                       else "NO APOSTAR")
+            col_v, col_vb = _color_estado(estado)
+            edge_col  = _GREEN if edge_o15 >= 6 else (_YELLOW if edge_o15 >= 0 else _RED)
+            sign_e    = "+" if edge_o15 >= 0 else ""
+            dom_col   = _GREEN if es_dom else _RED
+            dom_txt   = "DOMINANTE" if es_dom else "NO DOMINANTE"
+            estado_norm = ("APOSTAR" if "APOSTAR" in estado.upper() and "NO" not in estado.upper()
+                           else "PRECAUCIÓN" if "PRECAUC" in estado.upper()
+                           else "NO APOSTAR")
 
-        col_card, col_sem = st.columns([12, 1])
-        with col_card:
             st.markdown(
                 f'<div class="dh-card" style="border-left-color:{col_v};">'
-                f'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">'
+                f'<div class="dh-left">'
                 f'<span class="dh-partido">⚽ {partido}</span>'
-                f'<span class="dh-fecha">{fecha}</span>'
-                f'</div>'
                 f'<div class="dh-badges">'
                 f'<span class="dh-badge" style="color:{dom_col};border-color:{dom_col}44;background:{dom_col}11;">🔥 {dom_txt}</span>'
                 f'<span class="dh-badge" style="color:var(--texto-apagado);border-color:var(--borde);background:var(--bg-elemento);">{n_ok}/4 reglas</span>'
@@ -193,99 +221,102 @@ def mostrar() -> None:
                 f'<span class="dh-badge" style="color:{col_v};border-color:{col_vb};background:{col_v}11;'
                 f'font-size:11px;font-weight:700;">{estado}</span>'
                 f'</div>'
+                f'</div>'
+                f'<div class="dh-right">'
+                f'<span class="dh-fecha">{fecha}</span>'
+                f'{semaforo_mini_html(estado_norm)}'
+                f'</div>'
                 f'</div>',
                 unsafe_allow_html=True,
             )
-        with col_sem:
-            st.markdown(semaforo_mini_html(estado_norm), unsafe_allow_html=True)
 
-        with st.expander(f"Ver detalles — {nom_fav} vs {nom_riv}", expanded=False):
-            col_izq, col_der = st.columns(2, gap="medium")
+            with st.expander(f"Ver detalles — {nom_fav} vs {nom_riv}", expanded=False):
+                col_izq, col_der = st.columns(2, gap="medium")
 
-            with col_izq:
-                # xG y probabilidades
-                st.markdown(
-                    f'<div style="background:var(--bg-tarjeta);border:1px solid var(--borde);border-radius:6px;'
-                    f'padding:10px 14px;margin-bottom:8px;">'
-                    f'<div style="font-size:10px;color:var(--acento-morado);font-weight:800;letter-spacing:2px;'
-                    f'border-bottom:2px solid var(--acento-dorado);padding-bottom:5px;margin-bottom:8px;">'
-                    f'◈ DATOS DEL PARTIDO</div>'
-                    f'<div style="display:flex;gap:8px;margin-bottom:10px;">'
-                    f'<div style="flex:1;text-align:center;">'
-                    f'<div style="font-size:9px;color:var(--texto-apagado);text-transform:uppercase;">{nom_fav[:12]}</div>'
-                    f'<div style="font-size:22px;font-weight:900;color:{_GREEN};">{xg_fav:.2f}</div>'
-                    f'<div style="font-size:9px;color:var(--texto-apagado);">xG fav</div></div>'
-                    f'<div style="flex:1;text-align:center;">'
-                    f'<div style="font-size:9px;color:var(--texto-apagado);text-transform:uppercase;">P victoria</div>'
-                    f'<div style="font-size:22px;font-weight:900;color:#b8780f;">{p_vic:.1f}%</div>'
-                    f'<div style="font-size:9px;color:var(--texto-apagado);">probabilidad</div></div>'
-                    f'<div style="flex:1;text-align:center;">'
-                    f'<div style="font-size:9px;color:var(--texto-apagado);text-transform:uppercase;">{nom_riv[:12]}</div>'
-                    f'<div style="font-size:22px;font-weight:900;color:{_RED};">{xg_rival:.2f}</div>'
-                    f'<div style="font-size:9px;color:var(--texto-apagado);">xG rival</div></div>'
-                    f'</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
+                with col_izq:
+                    # xG y probabilidades
+                    st.markdown(
+                        f'<div style="background:var(--bg-tarjeta);border:1px solid var(--borde);border-radius:6px;'
+                        f'padding:10px 14px;margin-bottom:8px;">'
+                        f'<div style="font-size:10px;color:var(--acento-morado);font-weight:800;letter-spacing:2px;'
+                        f'border-bottom:2px solid var(--acento-dorado);padding-bottom:5px;margin-bottom:8px;">'
+                        f'◈ DATOS DEL PARTIDO</div>'
+                        f'<div style="display:flex;gap:8px;margin-bottom:10px;">'
+                        f'<div style="flex:1;text-align:center;">'
+                        f'<div style="font-size:9px;color:var(--texto-apagado);text-transform:uppercase;">{nom_fav[:12]}</div>'
+                        f'<div style="font-size:22px;font-weight:900;color:{_GREEN};">{xg_fav:.2f}</div>'
+                        f'<div style="font-size:9px;color:var(--texto-apagado);">xG fav</div></div>'
+                        f'<div style="flex:1;text-align:center;">'
+                        f'<div style="font-size:9px;color:var(--texto-apagado);text-transform:uppercase;">P victoria</div>'
+                        f'<div style="font-size:22px;font-weight:900;color:#b8780f;">{p_vic:.1f}%</div>'
+                        f'<div style="font-size:9px;color:var(--texto-apagado);">probabilidad</div></div>'
+                        f'<div style="flex:1;text-align:center;">'
+                        f'<div style="font-size:9px;color:var(--texto-apagado);text-transform:uppercase;">{nom_riv[:12]}</div>'
+                        f'<div style="font-size:22px;font-weight:900;color:{_RED};">{xg_rival:.2f}</div>'
+                        f'<div style="font-size:9px;color:var(--texto-apagado);">xG rival</div></div>'
+                        f'</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
 
-                # Reglas
-                st.markdown(
-                    f'<div style="background:var(--bg-tarjeta);border:1px solid var(--borde);border-radius:6px;'
-                    f'padding:10px 14px;">'
-                    f'<div style="font-size:10px;color:var(--acento-morado);font-weight:800;letter-spacing:2px;'
-                    f'border-bottom:2px solid var(--acento-dorado);padding-bottom:5px;margin-bottom:8px;">'
-                    f'◈ REGLAS DE DOMINANCIA</div>'
-                    f'{_detalle_reglas(reglas)}'
-                    f'<div style="margin-top:8px;text-align:right;font-size:10px;color:var(--texto-apagado);">'
-                    f'Reglas: <b style="color:{"#22c55e" if n_ok >= 3 else "#f59e0b"};font-size:16px;">{n_ok}</b>/4'
-                    f'</div></div>',
-                    unsafe_allow_html=True,
-                )
+                    # Reglas
+                    st.markdown(
+                        f'<div style="background:var(--bg-tarjeta);border:1px solid var(--borde);border-radius:6px;'
+                        f'padding:10px 14px;">'
+                        f'<div style="font-size:10px;color:var(--acento-morado);font-weight:800;letter-spacing:2px;'
+                        f'border-bottom:2px solid var(--acento-dorado);padding-bottom:5px;margin-bottom:8px;">'
+                        f'◈ REGLAS DE DOMINANCIA</div>'
+                        f'{_detalle_reglas(reglas)}'
+                        f'<div style="margin-top:8px;text-align:right;font-size:10px;color:var(--texto-apagado);">'
+                        f'Reglas: <b style="color:{"#22c55e" if n_ok >= 3 else "#f59e0b"};font-size:16px;">{n_ok}</b>/4'
+                        f'</div></div>',
+                        unsafe_allow_html=True,
+                    )
 
-            with col_der:
-                edge_col2 = _GREEN if edge_o15 >= 6 else (_YELLOW if edge_o15 >= 0 else _RED)
-                st.markdown(
-                    f'<div style="background:var(--bg-tarjeta);border:1px solid var(--borde);border-radius:6px;'
-                    f'padding:10px 14px;margin-bottom:8px;">'
-                    f'<div style="font-size:10px;color:var(--acento-morado);font-weight:800;letter-spacing:2px;'
-                    f'border-bottom:2px solid var(--acento-dorado);padding-bottom:5px;margin-bottom:8px;">'
-                    f'◈ MERCADOS</div>'
-                    f'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--borde);">'
-                    f'<span style="font-size:11px;color:{paleta["texto"]};">Over 1.5 goles</span>'
-                    f'<span style="font-size:13px;font-weight:700;color:{_GREEN};">{p_o15:.1f}%</span></div>'
-                    f'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--borde);">'
-                    f'<span style="font-size:11px;color:{paleta["texto"]};">Victoria {nom_fav[:12]}</span>'
-                    f'<span style="font-size:13px;font-weight:700;color:{_GREEN};">{p_vic:.1f}%</span></div>'
-                    f'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--borde);">'
-                    f'<span style="font-size:11px;color:{paleta["texto"]};">Hándicap −1</span>'
-                    f'<span style="font-size:13px;font-weight:700;color:{_GREEN};">{p_hcp:.1f}%</span></div>'
-                    f'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--borde);">'
-                    f'<span style="font-size:11px;color:{paleta["texto"]};">Cuota O1.5</span>'
-                    f'<span style="font-size:13px;font-weight:700;color:#b8780f;">{cuota_o15:.2f}</span></div>'
-                    f'<div style="display:flex;justify-content:space-between;padding:5px 0;">'
-                    f'<span style="font-size:11px;color:{paleta["texto"]};">Edge O1.5</span>'
-                    f'<span style="font-size:13px;font-weight:700;color:{edge_col2};">{sign_e}{edge_o15:.1f}%</span></div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
+                with col_der:
+                    edge_col2 = _GREEN if edge_o15 >= 6 else (_YELLOW if edge_o15 >= 0 else _RED)
+                    st.markdown(
+                        f'<div style="background:var(--bg-tarjeta);border:1px solid var(--borde);border-radius:6px;'
+                        f'padding:10px 14px;margin-bottom:8px;">'
+                        f'<div style="font-size:10px;color:var(--acento-morado);font-weight:800;letter-spacing:2px;'
+                        f'border-bottom:2px solid var(--acento-dorado);padding-bottom:5px;margin-bottom:8px;">'
+                        f'◈ MERCADOS</div>'
+                        f'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--borde);">'
+                        f'<span style="font-size:11px;color:{paleta["texto"]};">Over 1.5 goles</span>'
+                        f'<span style="font-size:13px;font-weight:700;color:{_GREEN};">{p_o15:.1f}%</span></div>'
+                        f'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--borde);">'
+                        f'<span style="font-size:11px;color:{paleta["texto"]};">Victoria {nom_fav[:12]}</span>'
+                        f'<span style="font-size:13px;font-weight:700;color:{_GREEN};">{p_vic:.1f}%</span></div>'
+                        f'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--borde);">'
+                        f'<span style="font-size:11px;color:{paleta["texto"]};">Hándicap −1</span>'
+                        f'<span style="font-size:13px;font-weight:700;color:{_GREEN};">{p_hcp:.1f}%</span></div>'
+                        f'<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--borde);">'
+                        f'<span style="font-size:11px;color:{paleta["texto"]};">Cuota O1.5</span>'
+                        f'<span style="font-size:13px;font-weight:700;color:#b8780f;">{cuota_o15:.2f}</span></div>'
+                        f'<div style="display:flex;justify-content:space-between;padding:5px 0;">'
+                        f'<span style="font-size:11px;color:{paleta["texto"]};">Edge O1.5</span>'
+                        f'<span style="font-size:13px;font-weight:700;color:{edge_col2};">{sign_e}{edge_o15:.1f}%</span></div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
 
-                # Marcador más probable
-                st.markdown(
-                    f'<div style="background:var(--bg-tarjeta);border:1px solid var(--borde);border-radius:6px;'
-                    f'padding:10px 14px;text-align:center;">'
-                    f'<div style="font-size:10px;color:var(--acento-morado);font-weight:800;letter-spacing:2px;margin-bottom:8px;">'
-                    f'◈ MARCADOR MÁS PROBABLE</div>'
-                    f'<div style="font-size:36px;font-weight:900;color:#b8780f;">{top_m}</div>'
-                    f'<div style="font-size:11px;color:var(--texto-apagado);margin-top:4px;">{top_p:.1f}% probabilidad</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
+                    # Marcador más probable
+                    st.markdown(
+                        f'<div style="background:var(--bg-tarjeta);border:1px solid var(--borde);border-radius:6px;'
+                        f'padding:10px 14px;text-align:center;">'
+                        f'<div style="font-size:10px;color:var(--acento-morado);font-weight:800;letter-spacing:2px;margin-bottom:8px;">'
+                        f'◈ MARCADOR MÁS PROBABLE</div>'
+                        f'<div style="font-size:36px;font-weight:900;color:#b8780f;">{top_m}</div>'
+                        f'<div style="font-size:11px;color:var(--texto-apagado);margin-top:4px;">{top_p:.1f}% probabilidad</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
 
-                # Veredicto
-                st.markdown(
-                    f'<div style="background:var(--bg-tarjeta);border:2px solid {col_v};border-radius:6px;'
-                    f'padding:12px;text-align:center;margin-top:8px;">'
-                    f'<div style="font-size:20px;font-weight:900;color:{col_v};">{estado}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
+                    # Veredicto
+                    st.markdown(
+                        f'<div style="background:var(--bg-tarjeta);border:2px solid {col_v};border-radius:6px;'
+                        f'padding:12px;text-align:center;margin-top:8px;">'
+                        f'<div style="font-size:20px;font-weight:900;color:{col_v};">{estado}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
